@@ -1,0 +1,2341 @@
+<!doctype html>
+<html lang="en-US">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: data: https://persistent.oaistatic.com/plugins/visualize/charts/ https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src 'unsafe-inline' blob: data: https://persistent.oaistatic.com/plugins/visualize/charts/ https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://persistent.oaistatic.com/plugins/visualize/charts/ https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://persistent.oaistatic.com/plugins/visualize/charts/ https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://persistent.oaistatic.com/plugins/visualize/charts/ https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>tinybox-operations-v2.html</title>
+</head>
+<body>
+<script type="application/json" id="codex-visualization-widget-state">__CODEX_VISUALIZATION_WIDGET_STATE__</script>
+<script>(() => {
+  const root = document.documentElement;
+  const mediaQuery = globalThis.matchMedia("(prefers-color-scheme: dark)");
+  const apply = Reflect.apply;
+  const isArray = Array.isArray;
+  const hasOwn = Object.hasOwn;
+  const parentWindow = globalThis.parent;
+  const stringify = JSON.stringify;
+  const parse = JSON.parse;
+  const encode = TextEncoder.prototype.encode.bind(new TextEncoder());
+  const initialStateElement = document.getElementById(
+    "codex-visualization-widget-state",
+  );
+  const initialGlobals = parse(initialStateElement?.textContent ?? "{}");
+  initialStateElement?.remove();
+  /** @type {Record<string, unknown> | null} */
+  let state = initialGlobals.widgetState ?? null;
+  const statePersistence = initialGlobals.statePersistence ?? "none";
+  let nextStateRequestId = 0;
+  /** @type {Map<number, { resolve: () => void; reject: (error: Error) => void; timeout: ReturnType<typeof globalThis.setTimeout>; serializedState: string }>} */
+  const pendingStateWrites = new Map();
+  const persistenceError = () =>
+    Object.assign(
+      new Error("The host could not persist the widget state update"),
+      {
+        code: -32000,
+        data: { code: "widget_state_persistence_failed", retryable: false },
+      },
+    );
+  /**
+   * @param {object} prototype
+   * @param {string} property
+   */
+  const getPrototypeGetter = (prototype, property) => {
+    // oxlint-disable-next-line typescript/unbound-method -- invoked through captured Reflect.apply
+    const getter = Object.getOwnPropertyDescriptor(prototype, property)?.get;
+    if (getter == null) {
+      throw new Error(`Missing ${property} getter`);
+    }
+    return getter;
+  };
+  const getMessageData = getPrototypeGetter(MessageEvent.prototype, "data");
+  const getMessagePorts = getPrototypeGetter(MessageEvent.prototype, "ports");
+  const getMessageSource = getPrototypeGetter(MessageEvent.prototype, "source");
+  // oxlint-disable-next-line typescript/unbound-method -- captured before the untrusted fragment runs
+  const addHostMessageListener = MessagePort.prototype.addEventListener;
+  // oxlint-disable-next-line typescript/unbound-method -- captured before the untrusted fragment runs
+  const postHostMessage = MessagePort.prototype.postMessage;
+  // oxlint-disable-next-line typescript/unbound-method -- captured before the untrusted fragment runs
+  const startHostPort = MessagePort.prototype.start;
+  // oxlint-disable-next-line typescript/unbound-method -- captured before the untrusted fragment runs
+  const stopMessagePropagation = Event.prototype.stopImmediatePropagation;
+  /** @type {MessagePort | null} */
+  let hostPort = null;
+  const postToHost = (type, payload) => {
+    if (hostPort != null) {
+      apply(postHostMessage, hostPort, [{ type, ...payload }]);
+    }
+  };
+  const openExternal = ({ href }) => {
+    if (globalThis.navigator.userActivation?.isActive === true) {
+      postToHost("open-external", { href });
+    }
+  };
+  const sendFollowUpMessage = ({ context, prompt, title }) => {
+    if (globalThis.navigator.userActivation?.isActive === true) {
+      postToHost("follow-up", { context, prompt, title });
+    }
+    return Promise.resolve();
+  };
+  /**
+   * @param {Record<string, unknown> | ((previous: Record<string, unknown> | null) => Record<string, unknown>)} next
+   * @returns {Promise<void>}
+   */
+  const setWidgetState = async (next) => {
+    const nextState = typeof next === "function" ? next(state) : next;
+    if (
+      nextState == null ||
+      typeof nextState !== "object" ||
+      isArray(nextState)
+    ) {
+      throw new TypeError("Widget state must be a JSON object");
+    }
+    const inputState = stringify(
+      nextState,
+      (_key, /** @type {unknown} */ value) => {
+        if (
+          typeof value === "undefined" ||
+          typeof value === "function" ||
+          typeof value === "symbol" ||
+          (typeof value === "number" && !Number.isFinite(value))
+        ) {
+          throw new TypeError("Widget state must be a JSON object");
+        }
+        return value;
+      },
+    );
+    const parsedState = parse(inputState);
+    if (
+      parsedState == null ||
+      typeof parsedState !== "object" ||
+      isArray(parsedState)
+    ) {
+      throw new TypeError("Widget state must be a JSON object");
+    }
+    const storedState = {
+      modelContent: null,
+      privateContent: null,
+      ...parsedState,
+    };
+    const serializedState = stringify(storedState);
+    if (encode(serializedState).length > 16 * 1024) {
+      throw new TypeError(
+        "Widget state must be a JSON object of at most 16 KiB",
+      );
+    }
+    if (
+      hasOwn(storedState, "imageIds") &&
+      (!isArray(storedState.imageIds) ||
+        storedState.imageIds.some(
+          (/** @type {unknown} */ id) => typeof id !== "string",
+        ))
+    ) {
+      throw new TypeError("Widget state imageIds must be an array of strings");
+    }
+    if (storedState.imageIds?.length > 0) {
+      throw Object.assign(
+        new TypeError("Visualization state does not support image attachments"),
+        { code: -32602, data: { code: "images_unsupported" } },
+      );
+    }
+    state = storedState;
+    globalThis.openai.widgetState = state;
+    globalThis.dispatchEvent(
+      new CustomEvent("openai:set_globals", {
+        detail: { globals: { widgetState: state } },
+      }),
+    );
+    if (statePersistence === "none") {
+      throw persistenceError();
+    }
+    const id = ++nextStateRequestId;
+    return new Promise((resolve, reject) => {
+      const timeout = globalThis.setTimeout(() => {
+        pendingStateWrites.delete(id);
+        reject(persistenceError());
+      }, 30_000);
+      pendingStateWrites.set(id, { resolve, reject, timeout, serializedState });
+      postToHost("widget-state-write", { id, state: serializedState });
+    });
+  };
+  const syncTheme = () => {
+    const theme = mediaQuery.matches ? "dark" : "light";
+    root.dataset.theme = theme;
+    globalThis.openai = {
+      ...globalThis.openai,
+      openExternal,
+      sendFollowUpMessage,
+      setWidgetState,
+      theme,
+      visualizationStyleVariables: {},
+      visualizationTheme: theme,
+      widgetState: state,
+      statePersistence,
+      stateModelContext: "none",
+    };
+    globalThis.dispatchEvent(
+      new CustomEvent("openai:set_globals", {
+        detail: { globals: globalThis.openai },
+      }),
+    );
+  };
+  const sendHeight = () => {
+    postToHost("height", {
+      height: Math.ceil(
+        Math.max(
+          document.body.scrollHeight,
+          document.body.getBoundingClientRect().height,
+        ),
+      ),
+    });
+  };
+
+  globalThis.addEventListener(
+    "message",
+    (event) => {
+      const data = apply(getMessageData, event, []);
+      const ports = apply(getMessagePorts, event, []);
+      const source = apply(getMessageSource, event, []);
+      if (
+        hostPort != null ||
+        source !== parentWindow ||
+        typeof data !== "object" ||
+        data?.type !== "codex-visualization-initialize" ||
+        !isArray(ports) ||
+        ports.length !== 1
+      ) {
+        return;
+      }
+      apply(stopMessagePropagation, event, []);
+      const nextHostPort = ports[0];
+      try {
+        apply(addHostMessageListener, nextHostPort, [
+          "message",
+          (event) => {
+            const data = apply(getMessageData, event, []);
+            if (typeof data === "object" && data?.type === "measure") {
+              sendHeight();
+            } else if (
+              typeof data === "object" &&
+              data?.type === "widget-state-result"
+            ) {
+              /** @type {unknown} */
+              const id = data.id;
+              if (typeof id !== "number") {
+                return;
+              }
+              const pending = pendingStateWrites.get(id);
+              if (pending != null) {
+                pendingStateWrites.delete(id);
+                globalThis.clearTimeout(pending.timeout);
+                if (data.ok === true) {
+                  pending.resolve();
+                } else {
+                  pending.reject(persistenceError());
+                }
+              }
+            }
+          },
+        ]);
+        apply(startHostPort, nextHostPort, []);
+      } catch {
+        return;
+      }
+      hostPort = nextHostPort;
+      for (const [id, { serializedState }] of pendingStateWrites) {
+        postToHost("widget-state-write", { id, state: serializedState });
+      }
+      sendHeight();
+    },
+    { capture: true },
+  );
+  document.currentScript?.remove();
+  mediaQuery.addEventListener("change", syncTheme);
+  globalThis.addEventListener("click", (event) => {
+    if (event.defaultPrevented) {
+      return;
+    }
+    let element = null;
+    if (event.target instanceof globalThis.Element) {
+      element = event.target;
+    } else if (event.target instanceof globalThis.Node) {
+      element = event.target.parentElement;
+    }
+    const link = element?.closest("a[href]");
+    const href = link?.getAttribute("href");
+    if (href == null) {
+      return;
+    }
+    if (href.startsWith("#")) {
+      let id;
+      try {
+        id = decodeURIComponent(href.slice(1));
+      } catch {
+        return;
+      }
+      const target = id.length === 0 ? root : document.getElementById(id);
+      if (
+        target == null ||
+        globalThis.navigator.userActivation?.isActive !== true
+      ) {
+        return;
+      }
+      event.preventDefault();
+      postToHost("scroll-to", {
+        top: target.getBoundingClientRect().top + globalThis.scrollY,
+      });
+      return;
+    }
+    event.preventDefault();
+    openExternal({ href });
+  });
+  new ResizeObserver(sendHeight).observe(document.body);
+  syncTheme();
+})();
+</script>
+<style>:root {
+  color-scheme: light dark;
+  background-color: var(
+    --background,
+    var(--color-background-primary, light-dark(rgb(255 255 255), rgb(24 24 24)))
+  ) !important;
+
+  /* Agent-facing contract; keep in sync with SKILL.md. */
+  --background: var(
+    --color-background-primary,
+    light-dark(rgb(255 255 255), rgb(24 24 24))
+  );
+  --foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --card: color-mix(in oklab, var(--foreground) 5%, var(--background));
+  --card-foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --popover: var(
+    --color-background-secondary,
+    light-dark(rgb(255 255 255), rgb(45 45 45))
+  );
+  --popover-foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --primary: var(
+    --color-text-info,
+    light-dark(rgb(51 156 255), rgb(131 195 255))
+  );
+  --primary-foreground: var(
+    --color-text-inverse,
+    light-dark(rgb(255 255 255), rgb(13 13 13))
+  );
+  --secondary: var(
+    --color-background-secondary,
+    light-dark(rgb(255 255 255 / 96%), rgb(54 54 54 / 96%))
+  );
+  --secondary-foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --muted: color-mix(in srgb, var(--foreground) 10%, transparent);
+  --muted-foreground: var(
+    --color-text-secondary,
+    light-dark(rgb(26 28 31 / 49.4%), rgb(255 255 255 / 49.8%))
+  );
+  --accent: var(
+    --color-background-info,
+    light-dark(rgb(229 242 255), rgb(13 39 63))
+  );
+  --accent-foreground: var(
+    --color-text-info,
+    light-dark(rgb(51 156 255), rgb(131 195 255))
+  );
+  --destructive: var(
+    --color-text-warning,
+    light-dark(rgb(226 85 7), rgb(255 133 73))
+  );
+  --border: var(
+    --color-border-secondary,
+    light-dark(rgb(26 28 31 / 8%), rgb(255 255 255 / 8.2%))
+  );
+  --input: var(
+    --color-border-primary,
+    light-dark(
+      rgb(26 28 31 / 11.8%),
+      color-mix(in oklab, rgb(0 0 0) 10%, transparent)
+    )
+  );
+  --ring: var(
+    --color-ring-primary,
+    light-dark(rgb(51 156 255), rgb(131 195 255 / 76%))
+  );
+  --font-size-base: var(--font-text-md-size, 14px);
+  --blue: light-dark(rgb(51 156 255), rgb(51 156 255));
+  --orange: light-dark(rgb(226 85 7), rgb(251 106 34));
+  --green: light-dark(rgb(0 162 64), rgb(64 201 119));
+  --red: light-dark(rgb(224 46 42), rgb(255 103 100));
+  --purple: light-dark(rgb(146 79 247), rgb(173 123 249));
+  --yellow: light-dark(rgb(255 195 0), rgb(255 210 64));
+  --viz-series-1: var(--primary);
+  --viz-series-2: light-dark(rgb(243 136 59), rgb(245 154 86));
+  --viz-series-3: light-dark(rgb(93 201 119), rgb(116 213 139));
+  --viz-series-4: light-dark(rgb(235 119 177), rgb(240 143 192));
+  --viz-series-5: light-dark(rgb(155 121 236), rgb(170 145 239));
+  --viz-series-6: light-dark(rgb(58 185 177), rgb(90 203 194));
+
+  /* Internal implementation variables; not part of the agent contract. */
+  --font-sans: -apple-system, system-ui, "Segoe UI", sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono",
+    monospace;
+  --font-size-normal: max(11px, var(--font-size-base));
+  --font-size-tooltip: calc(var(--font-size-base) - 1px);
+  --font-size-small: max(11px, calc(var(--font-size-base) - 2px));
+  --font-size-h1: calc(var(--font-size-normal) * 1.7142857143);
+  --font-size-h2: calc(var(--font-size-normal) * 1.4285714286);
+  --font-size-h3: calc(var(--font-size-normal) * 1.2857142857);
+  --font-weight-normal: 430;
+  --font-weight-medium: 500;
+  --icon-size: 16px;
+  --line-height-normal: calc(var(--font-size-normal) * 1.5);
+  --line-height-tooltip: calc(var(--font-size-tooltip) * 1.4285714286);
+  --line-height-small: calc(var(--font-size-small) + 4px);
+  --corner-shape: round;
+  --radius: var(--border-radius-lg, 10px);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-2xl: calc(var(--radius) * 1.6);
+  --radius-full: 9999px;
+  --shadow-sm: 0 1px 2px -1px rgb(0 0 0 / 8%);
+  --checkmark-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 17 17'%3E%3Cpath d='M12.8961 3.64101C13.1297 3.41418 13.4984 3.37523 13.7779 3.56581C14.0571 3.75635 14.1554 4.11331 14.0299 4.41347L13.9615 4.53847L7.71151 13.7045C7.59411 13.8767 7.4063 13.9877 7.19881 14.0072C6.99136 14.0267 6.78564 13.9533 6.63826 13.806L2.88826 10.056L2.79842 9.9457C2.6192 9.67407 2.64927 9.30496 2.88826 9.06581C3.12738 8.82669 3.49647 8.79676 3.76815 8.97597L3.8785 9.06581L7.03084 12.2182L12.8053 3.74941L12.8961 3.64101Z'/%3E%3C/svg%3E");
+
+  /* Legacy aliases; not part of the current agent contract. */
+  --viz-bg: transparent;
+  --viz-panel: var(--card);
+  --viz-border: var(--border);
+  --viz-text: var(--foreground);
+  --viz-muted: var(--muted-foreground);
+  --viz-accent: var(--primary);
+  --viz-accent-text: var(--primary-foreground);
+  --viz-accent-bg: var(--accent);
+  --viz-font-size: var(--font-size-base);
+  --viz-warning: var(--destructive);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html > body {
+  /* Preserve MCP aliases for older inline renderers without creating :root cycles. */
+  --color-background-primary: var(
+    --background,
+    light-dark(rgb(255 255 255), rgb(24 24 24))
+  );
+  --color-text-primary: var(
+    --foreground,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --color-border-secondary: var(
+    --border,
+    light-dark(rgb(26 28 31 / 8%), rgb(255 255 255 / 8.2%))
+  );
+
+  margin: 0;
+  padding: var(--visualize-paint-gutter, 0px);
+  color: var(--foreground);
+  background: transparent !important;
+  font-family: var(--font-sans) !important;
+  font-size: var(--font-size-normal);
+  font-weight: var(--font-weight-normal);
+  line-height: var(--line-height-normal);
+}
+
+.cursor-interaction {
+  cursor: var(--cursor-interaction, pointer);
+}
+
+a {
+  color: color-mix(in srgb, var(--viz-accent) 80%, var(--viz-text) 20%);
+  cursor: var(--cursor-interaction, pointer);
+  font-weight: var(--font-weight-medium, 500);
+  text-decoration: none;
+  text-underline-offset: 2px;
+}
+
+a:is(:hover, :focus-visible) {
+  text-decoration-line: underline;
+  text-decoration-style: dashed;
+  text-decoration-thickness: 0.5px;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p {
+  margin-block: 0;
+}
+
+h1 {
+  font-size: var(--font-size-h1);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h2 {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h3,
+h4,
+h5,
+h6 {
+  font-size: var(--font-size-h3);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.3;
+}
+
+b,
+strong,
+th {
+  font-weight: var(--font-weight-medium);
+}
+
+code:not(pre code) {
+  display: inline;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  corner-shape: var(--corner-shape);
+  background: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  overflow-wrap: anywhere;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  word-break: break-word;
+}
+
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  color: var(--foreground);
+  font: inherit;
+  text-align: start;
+}
+
+.table :is(th, td) {
+  padding-block: 10px;
+  padding-inline: 0 24px;
+  overflow-wrap: anywhere;
+  border-bottom: 1px solid var(--border);
+  text-align: start;
+  vertical-align: top;
+}
+
+.table-responsive > .table :is(th, td) {
+  overflow-wrap: break-word;
+}
+
+.table :is(th, td):last-child {
+  padding-inline-end: 0;
+}
+
+.table :is(caption, thead th) {
+  font-weight: 600;
+}
+
+.table thead th {
+  padding-block: 8px;
+  border-bottom-color: color-mix(in srgb, var(--foreground) 16%, transparent);
+}
+
+.table tbody tr:last-child :is(th, td) {
+  border-bottom: 0;
+}
+
+.table.table-sm :is(th, td) {
+  padding-block: 6px;
+}
+
+.table.table-sm :is(th, td):not(:last-child) {
+  padding-inline-end: 16px;
+}
+
+.table :is(.text-end, [align="right"]) {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+.table :is(.text-center, [align="center"]) {
+  text-align: center;
+}
+
+.table .text-nowrap {
+  white-space: nowrap;
+}
+
+#widget {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  padding: 0;
+  background: transparent !important;
+}
+
+.card {
+  min-width: 0;
+  padding: 12px;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  border-radius: var(--radius-2xl);
+  corner-shape: var(--corner-shape);
+  color: var(--card-foreground);
+  background: var(--card);
+}
+
+.widget {
+  min-width: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--radius-lg);
+  corner-shape: var(--corner-shape);
+  box-shadow: 0 0 0 0.5px var(--border-strong, var(--border));
+  color: var(--foreground);
+  background: var(--background);
+}
+
+#widget > :not(.card, .widget, .progress) {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.tooltip {
+  position: fixed;
+  z-index: 50;
+  top: 0;
+  left: 0;
+  width: max-content;
+  max-width: min(
+    20rem,
+    var(--tooltip-available-width, calc(100vw - 10px)),
+    calc(100vw - 10px)
+  );
+  max-height: min(
+    var(--tooltip-available-height, calc(100vh - 10px)),
+    calc(100vh - 10px)
+  );
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  corner-shape: var(--corner-shape);
+  color: var(--popover-foreground);
+  background: var(--popover);
+  box-shadow: none;
+  font-size: var(--font-size-tooltip);
+  line-height: var(--line-height-tooltip);
+  overflow-wrap: break-word;
+  white-space: normal;
+  pointer-events: none;
+  user-select: none;
+}
+
+.viz-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(max(180px, 24%), 1fr));
+  gap: 10px;
+}
+
+.viz-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.viz-stat-value {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+.viz-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+hr {
+  width: 100%;
+  height: 1px;
+  margin-block: 6px;
+  border: 0;
+  background: var(--border);
+}
+
+.nav {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+}
+
+.progress {
+  display: flex;
+  height: 8px;
+  margin-block: calc((var(--line-height-normal, 1.5em) - 8px) / 2);
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--muted);
+}
+
+.progress-bar:only-child {
+  border-radius: var(--radius-full);
+}
+
+.progress-bar {
+  height: 100%;
+  flex-shrink: 0;
+  border: 0;
+  background: var(--viz-series-1);
+}
+
+.viz-badge {
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  color: var(--accent-foreground);
+  background: var(--accent);
+  font-weight: var(--font-weight-medium);
+}
+
+small,
+.text-small,
+.viz-badge {
+  font-size: var(--font-size-small);
+  line-height: var(--line-height-small);
+}
+
+.text-muted {
+  color: var(--muted-foreground);
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.viz-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.viz-controls > .form-label {
+  display: grid;
+  min-width: min(100%, 260px);
+  flex: 1 1 280px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 2px 12px;
+  margin-bottom: 0;
+}
+
+.viz-controls > .form-label > :is(.form-control, .form-range, .form-select) {
+  grid-column: 1 / -1;
+}
+
+.btn,
+.nav-link,
+.form-check-input,
+.form-control,
+.form-range,
+.form-select {
+  font: inherit;
+}
+
+.btn,
+.nav-link {
+  appearance: button;
+  display: inline-flex;
+  inline-size: fit-content;
+  max-inline-size: 100%;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0 8px;
+  -webkit-app-region: no-drag;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: var(--corner-shape);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: var(--cursor-interaction, pointer);
+  text-align: center;
+  text-decoration: none;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+.btn:is(.btn-block, .viz-tile) {
+  inline-size: 100%;
+}
+
+.btn.viz-tile {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+a.btn {
+  cursor: var(--cursor-interaction, pointer);
+  text-decoration: none;
+}
+
+.btn:not(:disabled):hover,
+.nav-link:not(:disabled):not([aria-disabled="true"]):hover {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn-primary {
+  border-color: transparent;
+  color: var(--primary-foreground);
+  background: var(--foreground);
+  background-clip: padding-box;
+}
+
+.btn-primary .text-muted {
+  color: color-mix(in srgb, var(--primary-foreground) 50%, transparent);
+}
+
+.btn-primary:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 80%, transparent);
+  background-clip: padding-box;
+}
+
+.btn-ghost {
+  border-color: transparent;
+  color: var(--muted-foreground);
+  background: transparent;
+}
+
+.btn-ghost:not(:disabled):hover {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.nav-pills .nav-link {
+  min-width: 0;
+  border-color: transparent;
+  color: var(--muted-foreground);
+  background: transparent;
+}
+
+.nav-justified .nav-link {
+  flex: 1 1 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.nav-pills .nav-link.active {
+  color: var(--foreground);
+  background: var(--muted);
+}
+
+/* Shared preview chrome; product styles stay inside each variant. */
+.viz-dotted-background {
+  background-image: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--foreground) 14%, transparent) 0.8px,
+    transparent 0.8px
+  );
+  background-position: center;
+  background-size: 16px 16px;
+}
+
+.viz-carousel {
+  position: relative;
+  min-width: 0;
+}
+
+.viz-carousel:has(> .viz-carousel-controls) {
+  min-height: calc(60px + var(--viz-carousel-picker-height, 0px));
+  padding-bottom: 60px;
+}
+
+.viz-carousel > [data-variant][hidden] {
+  display: none !important;
+}
+
+.viz-carousel > [data-variant] {
+  isolation: isolate;
+}
+
+.viz-carousel-controls {
+  --viz-carousel-hover: light-dark(
+    color-mix(in srgb, var(--foreground) 5.4%, transparent),
+    color-mix(in srgb, var(--foreground) 7.8%, transparent)
+  );
+  position: absolute;
+  z-index: 2;
+  bottom: 8px;
+  left: 50%;
+  display: flex;
+  width: max-content;
+  /* Leave room for the host's design-controls launcher at the trailing edge. */
+  max-width: calc(100% - 96px);
+  align-items: center;
+  gap: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  color: var(--foreground);
+  background: var(--background);
+  font-family: var(--font-sans);
+  /* Match the settings dropdown chrome independently of the content font size. */
+  font-size: 13px;
+  font-weight: var(--font-weight-normal);
+  line-height: 18px;
+  transform: translateX(-50%);
+  user-select: none;
+}
+
+/* Keep authored mockup button styles out of the shared carousel chrome. */
+.viz-carousel-controls button,
+.viz-carousel-picker > summary {
+  display: flex !important;
+  height: auto !important;
+  min-height: 30px;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 4px;
+  padding: 0 6px !important;
+  -webkit-app-region: no-drag;
+  border: 0 !important;
+  border-radius: 14px !important;
+  color: inherit !important;
+  background: transparent !important;
+  font: inherit !important;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.viz-carousel-controls > button,
+.viz-carousel-picker > summary {
+  position: relative;
+  isolation: isolate;
+}
+
+.viz-carousel-controls > button {
+  --icon-size: 16px;
+  width: 30px !important;
+  padding: 0 !important;
+}
+
+.viz-carousel-picker > summary {
+  padding-inline: 12px !important;
+}
+
+.viz-carousel-controls .viz-carousel-caret {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  margin: 0;
+  color: inherit;
+  transform: rotate(180deg);
+}
+
+.viz-carousel-controls > button > svg,
+.viz-carousel-controls .viz-carousel-caret,
+.viz-carousel-count {
+  opacity: 0.5;
+}
+
+.viz-carousel-controls > button::before,
+.viz-carousel-picker > summary::before {
+  position: absolute;
+  z-index: -1;
+  inset: 3px;
+  border-radius: 12px;
+  content: "";
+  pointer-events: none;
+}
+
+.viz-carousel-controls > button:hover::before,
+.viz-carousel-picker > summary:hover::before {
+  background: var(--viz-carousel-hover);
+}
+
+.viz-carousel-controls > button,
+.viz-carousel-controls [data-lucide],
+.viz-carousel-controls .lucide {
+  flex-shrink: 0;
+}
+
+.viz-carousel-picker {
+  min-width: 0;
+}
+
+.viz-carousel-picker > summary {
+  min-width: 0;
+  list-style: none;
+}
+
+.viz-carousel-picker > summary::-webkit-details-marker {
+  display: none;
+}
+
+.viz-carousel-count {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.viz-carousel-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.viz-carousel-options {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 4px);
+  left: 0;
+  display: flex;
+  max-height: 240px;
+  flex-direction: column;
+  gap: 2px;
+  overflow: auto;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--background);
+  box-shadow: 0 4px 12px light-dark(rgb(0 0 0 / 6%), rgb(0 0 0 / 25%));
+}
+
+.viz-carousel-options > button {
+  border-radius: max(0px, calc(var(--radius-lg) - 5px)) !important;
+  width: 100% !important;
+  min-height: 28px;
+  justify-content: flex-start !important;
+  padding: 4px 8px !important;
+  font-size: var(--font-size-small) !important;
+  text-align: start;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.viz-carousel-options > [aria-current="true"],
+.viz-carousel-options > button:hover {
+  background: var(--viz-carousel-hover) !important;
+}
+
+.btn:disabled,
+.nav-link:disabled,
+.nav-link[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+[data-lucide] {
+  stroke-width: 1.6;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--foreground);
+}
+
+.form-control {
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  padding: 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: var(--corner-shape);
+  color: var(--foreground);
+  background: var(--secondary);
+}
+
+.form-control::placeholder {
+  color: var(--muted-foreground);
+}
+
+.form-control[type="file"] {
+  padding: 0;
+  overflow: hidden;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control[type="file"]::file-selector-button {
+  min-height: 26px;
+  margin-right: 8px;
+  padding: 0 8px;
+  border: 0;
+  border-right: 1px solid var(--input);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: inherit;
+  font: inherit;
+}
+
+.form-control[type="file"]:not(:disabled):hover::file-selector-button {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-control-color[type="color"] {
+  width: 40px;
+  height: 28px;
+  padding: 3px;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control-color[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.form-control-color[type="color"]::-webkit-color-swatch {
+  border: 0;
+  border-radius: calc(var(--radius-lg) - 4px);
+  corner-shape: var(--corner-shape);
+}
+
+textarea.form-control {
+  height: auto;
+  min-height: 72px;
+  padding: 8px 10px;
+  resize: vertical;
+}
+
+.form-control:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-control:disabled,
+.form-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.form-select {
+  appearance: none;
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  margin: 0;
+  padding: 0 32px 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: var(--corner-shape);
+  color: var(--foreground);
+  background-color: var(--secondary);
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted-foreground) 50%),
+    linear-gradient(135deg, var(--muted-foreground) 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) 50%,
+    calc(100% - 10px) 50%;
+  background-repeat: no-repeat;
+  background-size: 4px 4px;
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-select:not(:disabled):hover {
+  background-color: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-select:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-check {
+  display: flex;
+  min-height: 20px;
+  align-items: center;
+  gap: 6px;
+}
+
+.form-check-input {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  margin: 0;
+  border: 1px solid var(--input);
+  color: var(--primary-foreground);
+  background-color: transparent;
+  cursor: var(--cursor-interaction, default);
+  transition:
+    background-color 150ms,
+    border-color 150ms,
+    box-shadow 150ms;
+}
+
+.form-check:not(.form-switch) .form-check-input[type="checkbox"] {
+  border-color: var(--input);
+  border-radius: var(--radius-sm);
+  corner-shape: var(--corner-shape);
+  background-color: var(--secondary);
+  box-shadow: var(--shadow-sm);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input:not(:disabled):not(:checked):hover {
+  background-color: var(--card);
+}
+
+.form-check:not(.form-switch) .form-check-input[type="checkbox"]:checked {
+  border-color: var(--primary);
+  background-color: var(--primary);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input[type="checkbox"]:checked::before {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--primary-foreground);
+  content: "";
+  mask: var(--checkmark-image) center / 12px 12px no-repeat;
+}
+
+.form-check-input[type="radio"] {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-full);
+}
+
+.form-check-input[type="radio"]:checked {
+  border: 2px solid var(--primary);
+  background:
+    radial-gradient(circle, var(--primary-foreground) 0 2.5px, transparent 3px),
+    var(--primary);
+}
+
+.form-check:not(.form-switch) .form-check-input:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled {
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+}
+
+.form-switch .form-check-input:disabled,
+.form-switch .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.form-check-label {
+  color: var(--foreground);
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-switch .form-check-input {
+  position: relative;
+  width: 32px;
+  height: 20px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--muted);
+  box-shadow: none;
+  transition: background-color 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input::before {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  border: 1px solid light-dark(var(--primary-foreground), var(--foreground));
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+  box-shadow: var(--shadow-sm);
+  content: "";
+  transform: translate(2px, -50%);
+  transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input:checked {
+  background: var(--primary);
+}
+
+.form-switch .form-check-input:checked::before {
+  transform: translate(14px, -50%);
+}
+
+.form-switch .form-check-input:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.form-range {
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 28px;
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  outline: none;
+  border: 0;
+  accent-color: var(--primary);
+  background: linear-gradient(
+      color-mix(in srgb, var(--foreground) 7%, transparent),
+      color-mix(in srgb, var(--foreground) 7%, transparent)
+    )
+    center / 100% 2px no-repeat;
+}
+
+.form-range::-webkit-slider-runnable-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-webkit-slider-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range::-moz-range-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-moz-range-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.btn:not(.btn-primary, .viz-tile):is(
+  [aria-pressed="true"],
+  [aria-selected="true"],
+  .is-selected
+) {
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+  background: var(--primary);
+}
+
+.btn.viz-tile:is([aria-pressed="true"], [aria-selected="true"], .is-selected) {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.btn:focus-visible,
+.nav-link:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.viz-carousel-controls :is(button, summary):focus-visible {
+  outline: 2px solid var(--ring) !important;
+  outline-offset: 2px !important;
+}
+
+@media (pointer: coarse) {
+  .viz-carousel:has(> .viz-carousel-controls) {
+    min-height: calc(76px + var(--viz-carousel-picker-height, 0px));
+    padding-bottom: 76px;
+  }
+
+  .btn,
+  .nav-link,
+  .viz-carousel-controls button,
+  .viz-carousel-picker > summary,
+  .form-control,
+  .form-select {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  /* Keep small-screen WebKit from zooming when a text field receives focus. */
+  .form-control,
+  .form-select {
+    font-size: max(16px, var(--font-size-normal));
+  }
+
+  .form-control[type="file"]::file-selector-button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .form-control-color[type="color"] {
+    width: 44px;
+    height: 44px;
+  }
+
+  .form-control:is(
+    [type="date"],
+    [type="datetime-local"],
+    [type="month"],
+    [type="time"],
+    [type="week"]
+  ) {
+    min-width: 0;
+    max-width: 100%;
+    padding-block: 8px;
+  }
+
+  .form-check {
+    min-height: 44px;
+    padding-inline: 15px;
+  }
+
+  .form-check-input {
+    position: relative;
+  }
+
+  .form-check-input::after {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 44px;
+    height: 44px;
+    content: "";
+    transform: translate(-50%, -50%);
+  }
+
+  .form-check-label {
+    display: inline-flex;
+    min-width: 44px;
+    min-height: 44px;
+    align-items: center;
+  }
+
+  .form-range {
+    height: 44px;
+    touch-action: pan-y;
+  }
+
+  .form-range::-webkit-slider-runnable-track {
+    height: 44px;
+  }
+
+  .form-range::-moz-range-track {
+    height: 44px;
+  }
+
+  .form-range::-webkit-slider-thumb {
+    margin-top: 12px;
+  }
+}
+
+svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+#widget > svg {
+  width: 100%;
+}
+
+/* Model-authored chart rules can otherwise stretch icons after these styles load. */
+svg.lucide {
+  display: block;
+  width: var(--icon-size) !important;
+  height: var(--icon-size) !important;
+  flex: none;
+  margin: 0 !important;
+  stroke-width: 1.6;
+}
+
+.text-warning,
+.text-destructive {
+  color: var(--destructive);
+}
+
+html>body{padding:0}</style>
+<style id="codex-visualization-host-theme">:root {}</style>
+<script>
+(() => {
+  // Host colors are defaults; later authored styles can give the same names
+  // their own meaning (for example, --muted as a chart's label color).
+  const hostStyles = document.getElementById("codex-visualization-host-theme");
+  const hostStyle = hostStyles.sheet.cssRules[0].style;
+  // Typography, geometry and interaction cursors still follow the host.
+  const styleForProperty = (property) =>
+    /^--(?:font-|radius|corner-shape$|cursor-interaction$|icon-size$|visualize-paint-gutter$)/.test(property)
+      ? document.documentElement.style
+      : hostStyle;
+  const initialGlobals =
+    globalThis.__codexVisualizationInitialGlobals ?? globalThis.openai;
+  delete globalThis.__codexVisualizationInitialGlobals;
+  if (initialGlobals?.statePersistence != null) {
+    globalThis.openai ??= {};
+    globalThis.openai.statePersistence = initialGlobals.statePersistence;
+    globalThis.openai.stateModelContext = initialGlobals.stateModelContext ?? "none";
+  }
+  if (!true) {
+    return;
+  }
+  let appliedProperties = [];
+  const applyHostStyleVariables = (styleVariables) => {
+    if (styleVariables == null || typeof styleVariables !== "object") {
+      return;
+    }
+    for (const property of appliedProperties) {
+      styleForProperty(property).removeProperty(property);
+    }
+    appliedProperties = [];
+    for (const [property, value] of Object.entries(styleVariables)) {
+      if (property.startsWith("--") && typeof value === "string") {
+        styleForProperty(property).setProperty(property, value);
+        appliedProperties.push(property);
+      }
+    }
+  };
+
+  const syncHostStyles = (globals) => {
+    applyHostStyleVariables(globals?.visualizationStyleVariables);
+    const sandboxDocument = globalThis.frameElement?.ownerDocument;
+    if (sandboxDocument != null && globals?.visualizationTheme != null) {
+      let colorSchemeMeta = sandboxDocument.querySelector(
+        'meta[name="color-scheme"]',
+      );
+      if (colorSchemeMeta == null) {
+        colorSchemeMeta = sandboxDocument.createElement("meta");
+        colorSchemeMeta.name = "color-scheme";
+        sandboxDocument.head.appendChild(colorSchemeMeta);
+      }
+      colorSchemeMeta.content = globals.visualizationTheme;
+      sandboxDocument.documentElement.style.colorScheme =
+        globals.visualizationTheme;
+      // Paint the host surface behind transparent saved visualization documents.
+      sandboxDocument.documentElement.style.backgroundColor =
+        hostStyle.getPropertyValue("--background");
+    }
+  };
+
+  syncHostStyles(initialGlobals);
+  globalThis.addEventListener("openai:set_globals", (event) => {
+    syncHostStyles(event.detail?.globals);
+  });
+})();
+</script>
+
+
+
+<div id="tb-v2" aria-label="Tinybox simplified operations mockup">
+<style>
+#tb-v2{--paper:light-dark(#fff,#23272c);--canvas:light-dark(#f4f5f6,#191d22);--ink:light-dark(#232c30,#eff2f2);--muted:light-dark(#697276,#aab4b9);--line:light-dark(#dce2e3,#3e474c);--soft:light-dark(#eef2f2,#2d353b);--accent:light-dark(#295952,#a5d2c8);--tint:light-dark(#e7f1ed,#293e39);--red:light-dark(#963d34,#f4b2a9);--redbg:light-dark(#faebe7,#4a2f2c);--orange:light-dark(#96540f,#f4ca9d);--orangebg:light-dark(#fdf0df,#443627);--yellow:light-dark(#745d19,#e8d581);--yellowbg:light-dark(#f7f1d9,#423f2b);--green:light-dark(#327055,#a7d8ba);--greenbg:light-dark(#e9f3ec,#2c4236);--tb-map-water:light-dark(#edf3f6,#202e37);--tb-map-land:light-dark(#e1e7e0,#394740);--tb-map-line:light-dark(#9daa9f,#708379);--tb-map-ink:light-dark(#4d625b,#c3d1cc);--tb-map-pin:light-dark(#a54833,#ffa992);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--ink);width:100%;box-sizing:border-box}
+#tb-v2 *{box-sizing:border-box}#tb-v2 [hidden]{display:none!important}#tb-v2 h2,#tb-v2 h3,#tb-v2 p{margin:0}#tb-v2 h2{font-size:22px;line-height:1.25;font-weight:500}#tb-v2 h3{font-size:15px;font-weight:500}#tb-v2 strong{font-weight:500}#tb-v2 small,#tb-v2 .small{font-size:12px}#tb-v2 .muted{color:var(--muted)}#tb-v2 .kicker{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)}#tb-v2 .review-head{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;padding:3px 100px 14px 0}#tb-v2 .review-tabs{display:flex;gap:5px;margin-bottom:12px;flex-wrap:wrap}#tb-v2 button,#tb-v2 input,#tb-v2 select,#tb-v2 textarea{font:inherit;color:inherit}#tb-v2 button{padding:7px 11px;border:1px solid var(--line);border-radius:5px;background:var(--paper);font-size:12px;min-height:34px;text-align:left}#tb-v2 button:hover{background:var(--soft)}#tb-v2 button[aria-pressed=true],#tb-v2 .primary{background:var(--ink);color:var(--paper);border-color:var(--ink)}#tb-v2 button:disabled{opacity:.5}#tb-v2 .link{background:none;border:0;min-height:22px;padding:0;color:var(--accent);text-decoration:underline;text-underline-offset:3px}#tb-v2 .plain{background:none;border:0;padding:3px 0;min-height:24px}#tb-v2 label{font-size:12px;color:var(--muted);display:flex;flex-direction:column;gap:5px;min-width:0}#tb-v2 input,#tb-v2 select,#tb-v2 textarea{border:1px solid var(--line);border-radius:5px;background:var(--paper);padding:7px 8px;width:100%;min-width:0;font-size:13px;color:var(--ink)}#tb-v2 input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent);margin:0 7px 0 0}#tb-v2 .check{display:flex;flex-direction:row;align-items:center;color:var(--ink)}#tb-v2 textarea{min-height:72px;resize:vertical}#tb-v2 .shell{background:var(--paper);border:1px solid var(--line);border-radius:9px;overflow:hidden;position:relative}#tb-v2 .brandbar{padding:13px 18px;display:flex;align-items:center;justify-content:space-between;gap:10px;border-bottom:1px solid var(--line);flex-wrap:wrap}#tb-v2 .brand{font-weight:500;letter-spacing:.09em}#tb-v2 .nav{display:flex;gap:4px;flex-wrap:wrap;padding:8px 14px;border-bottom:1px solid var(--line);background:var(--canvas)}#tb-v2 .nav button{border:0;background:none;padding:8px 14px;font-size:13px}#tb-v2 .nav button[aria-pressed=true]{background:var(--paper);color:var(--accent);box-shadow:0 1px 3px light-dark(#00000012,#00000040)}#tb-v2 .main{padding:22px;min-height:560px;position:relative}#tb-v2 .row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}#tb-v2 .title{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;flex-wrap:wrap;margin-bottom:17px}#tb-v2 .title p{margin-top:4px;font-size:12px;color:var(--muted)}#tb-v2 .viewbar{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 18px}#tb-v2 .tabs{display:flex;gap:4px;flex-wrap:wrap}#tb-v2 .tag{display:inline-block;border-radius:4px;padding:3px 7px;background:var(--soft);font-size:11px;color:var(--muted);font-weight:500}#tb-v2 .red{background:var(--redbg);color:var(--red)}#tb-v2 .orange{background:var(--orangebg);color:var(--orange)}#tb-v2 .yellow{background:var(--yellowbg);color:var(--yellow)}#tb-v2 .green{background:var(--greenbg);color:var(--green)}#tb-v2 .section-title{display:flex;gap:10px;align-items:center;margin:18px 0 8px;font-size:13px;font-weight:500}#tb-v2 .section-title small{font-weight:400;color:var(--muted)}#tb-v2 .table-wrap{overflow-x:auto;max-width:100%}#tb-v2 table{width:100%;border-collapse:collapse;font-size:12px;text-align:left}#tb-v2 th{font-weight:500;color:var(--muted);background:var(--canvas)}#tb-v2 th,#tb-v2 td{padding:10px 9px;border-bottom:1px solid var(--line);vertical-align:middle}#tb-v2 td input,#tb-v2 td select{font-size:12px}#tb-v2 .num{text-align:right;font-variant-numeric:tabular-nums}#tb-v2 .task-table{min-width:700px;table-layout:fixed}#tb-v2 .task-table col:nth-child(1){width:104px}#tb-v2 .task-table col:nth-child(2){width:131px}#tb-v2 .task-table col:nth-child(4){width:93px}#tb-v2 .task-table col:nth-child(5){width:80px}#tb-v2 .task-table col:nth-child(6){width:78px}#tb-v2 .task-table td:nth-child(3) button{font-size:13px}#tb-v2 .task-table small{display:block;margin-top:3px}#tb-v2 .group-toggle{display:flex;justify-content:space-between;gap:10px;width:100%;border:0;background:var(--canvas);margin-top:17px;font-size:13px}#tb-v2 .group-toggle span:last-child{color:var(--muted);font-size:12px}#tb-v2 .panel{background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:16px;min-width:0}#tb-v2 .panel h3{margin-bottom:12px}#tb-v2 .split{display:grid;grid-template-columns:minmax(0,1fr) 245px;gap:18px;align-items:start}#tb-v2 .stack{display:flex;flex-direction:column;gap:14px}#tb-v2 .space{margin-top:15px}#tb-v2 .fields{display:grid;grid-template-columns:1fr 1fr;gap:12px}#tb-v2 .fields .full{grid-column:1/-1}#tb-v2 .header-fields{display:grid;grid-template-columns:1fr 170px 1.2fr;gap:12px;margin-bottom:20px}#tb-v2 .option-table{table-layout:fixed}#tb-v2 .option-table th:nth-child(1){width:105px}#tb-v2 .option-table th:nth-child(3){width:74px}#tb-v2 .option-table th:nth-child(4){width:120px}#tb-v2 .option-table td{padding:10px 6px}#tb-v2 .option-table select{min-width:90px}#tb-v2 .choice{display:flex;gap:5px;align-items:center;flex-wrap:wrap}#tb-v2 .choice select{flex:1}#tb-v2 .price{font-size:26px;font-weight:500;letter-spacing:-.03em}#tb-v2 .keyvalues{display:grid;grid-template-columns:1fr auto;gap:7px;font-size:12px}#tb-v2 .keyvalues span:nth-child(even){text-align:right;font-variant-numeric:tabular-nums}#tb-v2 hr{border:0;border-top:1px solid var(--line);margin:14px 0}#tb-v2 details{margin-top:16px}#tb-v2 summary{font-size:12px;color:var(--accent)}#tb-v2 .notice{padding:9px 12px;background:var(--tint);color:var(--accent);border-radius:5px;font-size:12px}#tb-v2 .order-table{min-width:700px}#tb-v2 .mini-form{padding:15px;background:var(--canvas);border:1px solid var(--line);border-radius:6px;margin-bottom:15px}#tb-v2 .preset-table{min-width:760px}#tb-v2 .gantt-wrap{overflow-x:auto;max-width:100%;margin-top:12px}#tb-v2 .gantt{display:grid;grid-template-columns:210px repeat(28,minmax(25px,1fr));min-width:910px;position:relative;isolation:isolate}#tb-v2 .g-label{grid-column:1;padding:9px 10px 9px 0;border-bottom:1px solid var(--line);font-size:12px;min-height:43px;display:flex;align-items:center;gap:5px;background:var(--paper);z-index:2}#tb-v2 .g-label button{font-size:12px;white-space:normal;text-decoration:none}#tb-v2 .g-label .expand{padding:1px 3px;min-height:25px;border:0;background:none;font-size:14px;color:var(--muted);min-width:18px}#tb-v2 .g-day{text-align:center;padding:4px 0;color:var(--muted);font-size:11px;background:var(--canvas);border-left:1px solid var(--line)}#tb-v2 .g-day.today{background:var(--tint);color:var(--accent);font-weight:500}#tb-v2 .g-track{grid-column:2/-1;min-height:43px;border-bottom:1px solid var(--line);background:repeating-linear-gradient(to right,var(--line) 0,var(--line) 1px,transparent 1px,transparent calc(100% / 28));z-index:0}#tb-v2 .g-bar{align-self:center;min-height:26px;height:27px;border:0;border-radius:4px;margin:0 2px;padding:3px 7px;background:var(--tint);color:var(--accent);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;z-index:1;position:relative;touch-action:pan-y}#tb-v2 .g-bar.red{background:var(--redbg);color:var(--red)}#tb-v2 .g-bar.orange{background:var(--orangebg);color:var(--orange)}#tb-v2 .g-bar.green{background:var(--greenbg);color:var(--green)}#tb-v2 .g-bar.parent{height:13px;min-height:13px;background:var(--muted);opacity:.65;padding:0;margin-top:0}#tb-v2 .g-bar.jobbar{background:var(--accent);color:var(--paper);height:23px;min-height:23px}#tb-v2 .g-group{grid-column:1/-1;background:var(--canvas);color:var(--muted);font-size:11px;letter-spacing:.05em;text-transform:uppercase;padding:7px 10px;margin-top:10px}#tb-v2 .g-handle{position:absolute;top:3px;bottom:3px;right:1px;width:7px;border-right:2px solid currentColor;opacity:.55;cursor:ew-resize}#tb-v2 .g-status{height:7px;width:7px;border-radius:50%;background:var(--muted);flex:none}#tb-v2 .g-status.red{background:var(--red)}#tb-v2 .g-status.orange{background:var(--orange)}#tb-v2 .g-status.green{background:var(--green)}#tb-v2 .project-meta{display:flex;flex-wrap:wrap;gap:8px 22px;padding:11px 0 17px;margin-bottom:4px;border-bottom:1px solid var(--line);font-size:12px}#tb-v2 .project-meta span{color:var(--muted)}#tb-v2 .project-meta strong{color:var(--ink);margin-left:5px}#tb-v2 .modal-layer{position:absolute;inset:0;z-index:10;display:flex;justify-content:center;align-items:flex-start;padding:75px 14px 20px;background:light-dark(#17242e44,#00000070)}#tb-v2 .dialog{width:min(490px,100%);background:var(--paper);border:1px solid var(--line);border-radius:9px;padding:22px;box-shadow:0 12px 60px light-dark(#17242e33,#00000066)}#tb-v2 .dialog h3{font-size:18px;margin-bottom:6px}#tb-v2 .dialog .fields{margin-top:17px}#tb-v2 .dialog .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;flex-wrap:wrap}#tb-v2 .toast{padding:9px 12px;background:var(--tint);color:var(--accent);font-size:12px;border-bottom:1px solid var(--line)}#tb-v2 .schema{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:22px}#tb-v2 .schema-table{min-width:720px}#tb-v2 .schema-nav{display:flex;flex-wrap:wrap;gap:5px;margin:18px 0 12px}#tb-v2 code{font:12px/1.5 ui-monospace,SFMono-Regular,monospace;overflow-wrap:anywhere}#tb-v2 .schema-flow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 17px;font-size:12px}#tb-v2 .schema-flow span{padding:7px 10px;background:var(--soft);border-radius:4px}#tb-v2 .compact th,#tb-v2 .compact td{padding-top:7px;padding-bottom:7px}#tb-v2 .compact .main{padding:17px}
+@media(max-width:840px){#tb-v2 .split{grid-template-columns:minmax(0,1fr) 210px}#tb-v2 .main{padding:16px}#tb-v2 .option-table{min-width:550px}#tb-v2 .header-fields{grid-template-columns:1fr 1fr}#tb-v2 .header-fields label:last-child{grid-column:1/-1}}
+@media(max-width:650px){#tb-v2 .split,#tb-v2 .fields,#tb-v2 .header-fields{grid-template-columns:1fr}#tb-v2 .header-fields label:last-child{grid-column:auto}#tb-v2 .main,#tb-v2 .schema{padding:12px}#tb-v2 .nav{padding:7px}#tb-v2 .nav button{padding:8px 10px}#tb-v2 .review-head{padding-right:90px}#tb-v2 .dialog{padding:16px}#tb-v2 .modal-layer{padding-top:30px}#tb-v2 .fields .full{grid-column:auto}#tb-v2 .shell:has(.modal-layer:not([hidden])) .main{min-height:950px}#tb-v2 .option-table{min-width:540px}#tb-v2 h2{font-size:20px}}
+@media(pointer:coarse){#tb-v2 button{min-height:44px}#tb-v2 input:not([type=checkbox]),#tb-v2 select,#tb-v2 textarea{font-size:16px;min-height:44px}#tb-v2 .g-bar{min-height:28px}#tb-v2 .g-label .expand{min-height:38px}}
+</style>
+<div class="review-head"><div><div class="kicker">Tinybox · version 2</div><h2>One task system. Connected orders and stock.</h2></div><span class="tag">Interactive mockup · sample data</span></div>
+<div class="review-tabs" aria-label="Design sections"><button type="button" class="cursor-interaction" data-review="app" aria-pressed="true">App & forms</button><button type="button" class="cursor-interaction" data-review="tables" aria-pressed="false">Six core tables</button></div>
+<section id="tb2-app" class="shell" aria-label="Simplified Tinybox operations">
+ <div class="brandbar"><span class="brand">TINYBOX <span class="muted" style="letter-spacing:0;font-weight:400">/ Operations</span></span><span class="small muted">Demo day · Mon, October 5, 2026</span></div>
+ <nav class="nav" aria-label="Main navigation"><button type="button" class="cursor-interaction" data-nav="tasks" aria-pressed="true">Tasks</button><button type="button" class="cursor-interaction" data-nav="orders" aria-pressed="false">Quotes & orders</button><button type="button" class="cursor-interaction" data-nav="production" aria-pressed="false">Production</button><button type="button" class="cursor-interaction" data-nav="inventory" aria-pressed="false">Inventory</button><button type="button" class="cursor-interaction" data-nav="presets" aria-pressed="false">Presets</button></nav>
+ <div id="tb2-toast" class="toast" hidden role="status"></div><main id="tb2-main" class="main"></main><div id="tb2-modal" class="modal-layer" hidden></div>
+</section>
+<section id="tb2-tables" class="schema" hidden></section>
+<template id="tb2-map"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 240" role="img" aria-labelledby="tb-province-map-title tb-province-map-desc" class="tb-province-map" style="width:100%;height:auto;display:block">
+<title id="tb-province-map-title">Demo delivery site: Toronto, Ontario</title>
+<desc id="tb-province-map-desc">A province-scale map of Ontario with surrounding provincial and US state boundaries. A circle marks Toronto. Illustrative delivery site only.</desc>
+<defs><clipPath id="tb-province-map-clip"><rect width="280" height="216"/></clipPath></defs>
+<rect width="280" height="216" fill="var(--tb-map-water, transparent)"/>
+<g clip-path="url(#tb-province-map-clip)"><path d="M84.63,0L85.23,2.4L85.39,3.47L85.42,4.29L85.31,4.85L84.97,5.7L84.37,6.83L83.84,7.68L83.36,8.26L82.89,8.67L82.43,8.93L82.45,9.01L82.95,8.92L83.49,8.66L84.52,7.96L84.9,7.82L85.94,7.81L85.94,8.1L85.39,8.65L85.49,8.72L86.26,8.31L87.88,7.78L94.16,6.1L95.61,6.03L97.62,6.59L99.21,7.66L100.94,9.01L102.8,10.03L105.77,11.04L106.64,11.49L108.4,12L108.4,12L106.54,13.87L104.66,15.76L102.77,17.66L100.86,19.54L98.25,22.19L95.61,24.83L92.94,27.45L90.25,30.06L87.87,32.49L85.46,34.91L83.03,37.32L80.58,39.71L78.51,41.81L76.42,43.9L74.31,45.99L72.19,48.06L69.05,50.62L65.87,53.15L62.67,55.67L59.43,58.17L58.67,63.55L57.91,68.93L57.15,74.31L56.39,79.69L55.62,85.07L54.86,90.45L54.1,95.82L53.38,101.22L53.07,103.29L52.67,105.91L50.77,105.63L47.33,105.12L43.9,104.6L40.47,104.05L37.04,103.49L36.06,103.32L33.62,102.9L30.2,102.3L26.78,101.67L23.37,101.03L19.96,100.37L16.55,99.68L13.15,98.98L9.75,98.25L6.36,97.51L2.97,96.74L3.88,91.44L4.77,86.14L5.66,80.84L6.56,75.54L7.47,70.24L8.38,64.93L9.3,59.63L10.22,54.33L11.15,49.03L12.09,43.73L13.03,38.43L13.98,33.14L14.93,27.84L15.89,22.55L16.85,17.26L17.82,11.97L18.58,8.77L19.34,5.57L20.1,2.37L20.66,0L84.63,0Z" fill="var(--tb-map-land, currentColor)" fill-opacity=".58" stroke="var(--tb-map-line, currentColor)" stroke-width=".65"><title>Manitoba</title></path>
+<path d="M53.38,101.22L54.1,95.82L54.86,90.45L55.62,85.07L56.39,79.69L57.15,74.31L57.91,68.93L58.67,63.55L59.43,58.17L62.67,55.67L65.87,53.15L69.05,50.62L72.19,48.06L74.31,45.99L76.42,43.9L78.51,41.81L80.58,39.71L83.03,37.32L85.46,34.91L87.87,32.49L90.25,30.06L92.94,27.45L95.61,24.83L98.25,22.19L100.86,19.54L102.77,17.66L104.66,15.76L106.54,13.87L108.4,12L109.2,12.51L110.14,13.68L111.65,15.22L112.81,16.19L114.11,17.11L115.4,18.74L117.45,22.41L117.98,22.87L119.32,23.5L121.85,24.33L125.58,26.2L127.23,26.92L128.31,27.21L129.38,27.72L130.45,28.43L131.26,29.21L131.82,30.04L132.32,30.59L133.19,31.19L133.65,31.63L133.69,32.27L132.62,34.81L132.59,35.02L133.67,33.19L134.27,32.67L134.75,32.42L135.75,32.45L137.26,32.75L138.59,32.75L139.73,32.44L140.7,32.3L141.5,32.32L142.08,32.23L142.44,32.02L142.87,32L144.59,32.61L145.29,32.63L147.81,33.16L149.42,32.91L149.7,33.02L150.28,33.78L150.76,33.82L151.55,33.68L152.34,33.86L153.68,34.84L154.31,35.69L154.96,37.46L155.03,37.99L154.1,42.19L153.82,43.81L153.83,45.21L154.07,46.01L155.07,47.33L155.25,47.67L155.89,49.65L156.08,50.51L156.06,51.49L155.82,53.12L155.95,54.35L156.27,56.21L156.22,57.48L155.8,58.16L155.53,58.82L155.34,60.01L155.35,60.46L155.62,61.32L156.07,61.8L156.8,62.33L157.49,63.14L158.78,65.1L159.7,66.17L160.86,67.77L161.1,68.58L160.83,69.14L160.47,69.53L159.62,70.08L159.25,70.47L159.35,70.55L160.6,70.22L161.35,70.21L162,70.59L162.56,71.35L163.45,71.97L164.68,72.46L165.93,73.32L168.07,75.39L168.46,75.87L169.07,76.98L169.88,78.73L170.33,79.87L170.4,80.42L170.03,80.99L168.72,82.08L167.44,83.92L167.87,83.81L168.74,83.01L170.19,81.45L171.02,81.12L171.83,81.24L173.11,81.57L174.25,82.1L175.27,82.81L176.86,84.78L177.97,85.83L178.13,88.04L178.37,91.08L178.6,94.11L178.83,97.15L179.07,100.18L179.3,103.21L179.53,106.25L179.76,109.28L180,112.31L180.23,115.34L180.46,118.37L180.69,121.4L180.93,124.43L181.2,127.97L181.2,128.04L180.88,128.92L181.06,129.86L181.71,130.92L182.11,132.04L182.26,133.21L182.96,134.56L184.84,136.86L186.35,139.51L187.42,140.93L188.57,142L191.41,142.84L198.22,143.7L201.04,144.96L201.06,144.97L201.85,145.97L201.96,146.14L202.13,146.54L202.46,146.83L203.7,147.58L204.34,147.83L204.82,147.9L205.12,147.83L205.23,147.58L205.26,146.87L205.44,146.67L205.6,146.68L206.02,146.73L206.74,147.68L207.72,149.53L208.85,150.66L210.13,151.09L211.39,151.09L212.64,150.68L213.73,150.81L214.67,151.49L217.04,150.81L220.81,148.73L223.32,147.54L224.57,147.25L225.81,147.32L227.49,147.89L227.44,148.64L227.31,150.11L227.23,151.08L227.89,151.6L228.62,152.18L228.48,152.31L225.78,155.25L225.32,155.38L224.49,155.44L223.32,156.02L221.84,157.12L220.1,158.95L217.1,162.81L217.05,162.89L216.98,162.85L216.76,162.94L215.91,164.04L214.95,164.72L212.54,165.91L211.99,166.38L211.28,166.7L210.41,166.87L209.56,167.23L208.73,167.77L207.05,169.31L206.61,169.4L206.4,169.17L206.44,168.98L206.71,168.61L207.75,167.81L207.58,167.7L207.26,167.88L206.78,168.36L206.57,168.33L206.62,167.82L206.27,167.76L205.51,168.14L205.02,168.26L204.81,168.12L204.58,168.14L204.34,168.33L203.93,168.35L203.3,168.63L202.02,169.23L201.72,169.63L201.72,169.75L202.92,169.05L203.48,168.8L203.9,168.67L204.08,168.78L203.95,169.08L203.97,169.27L204.3,169.31L204.48,169.22L204.49,169.13L204.32,169.06L204.31,168.95L204.46,168.78L205.81,168.21L206.13,168.49L205.92,169.37L206.09,169.77L206.65,169.68L207.26,169.39L207.92,168.9L208.16,168.87L207.98,169.29L207.65,169.7L206.88,170.42L206.75,170.88L206.78,170.99L207.02,170.79L207.93,170.59L208.29,170.55L208.24,170.83L207.76,171.05L206.75,171.74L205.9,172.04L205.38,171.98L205.25,171.7L205.5,171.2L205.45,171.08L204.79,171.47L204.59,171.48L204.33,171.21L204.36,171.14L204.67,171.11L204.81,170.94L204.21,170.91L203.37,171.22L202.62,171.19L202.13,170.89L201.98,170.69L202.19,170.58L202.13,170.46L201.8,170.32L200.92,170.33L200.69,170.5L200.56,170.81L199.64,170.88L199.2,171.14L198.15,171.43L196.49,171.75L195.18,172.14L194.22,172.59L193.49,172.79L193.01,172.74L192.22,172.93L191.14,173.35L189.4,173.76L188.77,174.06L187.89,174.82L186.74,176.04L185.93,176.66L185.48,176.67L185.18,176.83L185.04,177.14L184.43,177.61L184.21,177.96L184.12,178.45L183.76,179.23L182.81,180.96L182.83,181.19L183.29,181.76L184.12,181.92L185.15,182.16L186.3,182.08L186.9,182.17L187.31,182.02L187.98,181.53L189.33,180.92L189.35,180.98L189.46,183.11L189.46,183.11L189.46,183.11L189.41,183.28L189.72,183.62L189.82,183.86L189.79,184.15L190.09,184.5L190.71,184.94L190.96,185.26L190.85,185.48L189.79,186.13L189.2,186.24L188.69,186.09L187.88,186.06L186.76,186.14L184.88,186.62L184.26,186.7L183.91,186.59L183.47,186.66L181.89,187.23L180.28,187.59L179.19,188.01L178.62,188.49L178.28,188.9L177.94,189.22L177.66,189.33L177.19,190.14L177.25,190.25L177.97,190.16L178.56,190.35L180.42,190.45L180.83,190.64L180.55,190.76L177.73,190.55L177.02,190.64L175.68,190.45L173.71,189.98L171.74,189.85L169.78,190.06L168.39,190.43L167.58,190.95L165.49,192.84L164.8,193.85L164.54,194.76L164.32,195.24L164.13,195.26L164.13,195.05L164.3,194.62L164.22,194.54L163.73,195L163.65,195.13L162.67,195.32L161.61,195.79L160.23,196.64L159.32,197.36L158.88,197.94L158.64,198.61L158.61,199.36L158.47,199.51L157.92,198.69L157.56,198.39L157.17,198.25L156.76,198.28L155.43,198.8L154.46,198.72L153.29,198.21L152.84,197.96L152.74,197.36L152.83,196.17L153.07,195.41L153.34,195.14L153.64,194.95L154.04,194.75L154.99,194.62L157.58,194.79L158.26,194.68L158.75,194.45L159.06,194.1L159.17,193.54L159.1,192.78L158.96,192.47L158.77,192.5L158.51,192.46L157.28,192.19L157.08,191.98L156.97,191.79L156.97,191.79L157.86,190.93L158.34,189.49L158.87,186.01L158.87,186.01L159.82,185.65L161,185.09L161.83,184.46L162.31,183.78L162.83,183.29L163.39,182.99L163.94,182.54L164.5,181.93L164.87,181.11L165.07,180.07L165.09,179.03L164.94,177.98L164.73,173.76L164.57,172.78L164.74,171.89L165.26,171.1L165.56,170.34L165.65,169.6L165.89,168.98L166.28,168.47L166.66,168.14L167.04,167.97L167.28,167.65L167.4,167.2L167.68,166.61L168.13,165.91L168.28,165.32L168.2,164.41L168.18,163.49L167.96,162.98L167.57,162.52L167.39,162.02L167.38,161.19L167.18,161.12L166.84,161.09L166.51,160.76L166.05,159.95L165.65,159.43L165.32,159.19L165.19,158.94L164.84,158.66L164.36,158.51L164.14,158.27L164.21,157.92L165.09,157.74L166.81,157.74L167.73,157.78L167.83,157.87L167.59,158.54L167.64,158.94L167.93,159.33L168.12,159.85L168.19,160.51L168.66,160.73L168.79,160.8L168.93,161.15L169.3,161.21L169.43,161.39L169.3,161.71L169.38,161.83L169.9,161.85L170.25,161.3L170.42,161.16L170.76,161.11L170.83,161.24L170.61,161.56L170.51,161.91L170.53,162.29L170.29,162.72L169.52,163.52L169.5,163.68L169.68,163.72L170.44,163.22L170.95,163.11L171.35,163.24L171.58,163.42L171.63,163.67L171.57,164.29L171.41,165.28L171.56,165.47L172.02,164.83L172.57,164.38L173.61,163.98L173.8,164.04L174.36,165.04L175.59,165.73L177.73,166.44L179,166.61L179.4,166.23L179.61,165.54L179.64,164.53L179.38,163.83L178.84,163.45L178.55,163.06L178.52,162.67L178.89,162.31L179.47,161.99L180.06,161.86L180.14,161.96L180.04,162.36L180.14,162.48L180.44,162.51L180.58,162.63L181.05,162.98L182.02,163L182.36,162.87L182.07,162.62L182,162.25L182.16,161.76L182.11,161.56L181.8,161.74L181.82,162.12L181.69,162.34L181.49,162.31L181.34,161.88L181.18,161.51L180.88,160.89L180.21,160.68L179.96,160.47L179.92,160.14L179.78,159.95L179.54,159.9L179.06,159.31L178.47,158.89L178.48,158.67L179,158.51L179.13,158.29L179.03,158.01L178.71,157.68L178.48,157.61L178.34,157.8L178.2,157.76L178.06,157.49L178.12,157.03L178.62,156.47L178.66,155.95L178.5,155.56L178.18,155.35L177.71,155.31L177.44,155.36L177.36,155.49L177.55,155.95L177.47,156.02L176.64,155.87L176.34,155.6L175.92,155.42L175.56,154.7L175.47,154.18L175.44,153.27L175.18,152.71L175.04,152.65L175.08,152.99L174.94,153.17L174.59,153.28L174.36,153.13L174.25,152.73L174.01,152.4L173.58,152.03L173.23,151.48L173.11,151.24L173.07,150.99L172.94,150.71L172.57,150.41L172.4,149.88L172.22,149.66L171.72,149.16L171.54,148.88L171.42,148.78L170.8,148.82L170.12,148.84L169.01,149.03L168.46,148.9L168.46,148.44L168.4,148.18L168.3,148.14L168.15,148.27L168.12,148.46L167.78,148.69L167.2,148.72L165.93,148.53L165.47,148.57L164.67,148.94L164.4,148.81L164.67,148.56L164.64,148.37L164.41,148.32L164.35,148.22L164.25,148.04L165.08,147.56L165.05,147.37L164.42,147.04L164.16,147.1L164.04,147.39L163.81,147.57L163.48,147.66L163.29,147.86L163.16,147.86L163.15,147.69L163.1,147.28L162.69,147.17L160.99,147.07L160.09,147.07L159.4,147.07L158.34,146.74L158.04,146.37L155.92,146.65L155.57,146.72L155.35,146.68L154.86,146.31L153.35,146.59L152.22,146.71L148.47,146.09L147.49,145.83L147.31,145.61L146.72,145.47L145.15,145.35L144.97,145.3L144.81,144.97L144.35,144.86L143.5,144.85L142.99,144.64L142.84,144.24L142.86,143.77L143.05,143.24L143.01,142.81L142.74,142.41L142.33,142.12L141.73,142.2L140.81,142.53L140.05,142.65L139.82,142.88L139.68,143.07L139.47,143.14L138.88,142.4L138.88,141.98L139.06,141.68L139.75,140.75L139.98,140.14L139.76,139.84L139.55,139.88L139.37,140.27L139.22,140.46L139.11,140.46L138.93,140.06L138.99,139.11L139.21,138.75L139.57,138.58L140.23,138.62L140.45,138.5L140.57,138.16L140.42,137.84L139.99,137.53L139.54,137.37L139.05,137.35L138.74,137.46L138.58,137.7L138.37,137.65L138.11,137.32L137.3,136.91L137.09,136.63L137.12,136.22L137.62,135.18L137.56,134.9L137.82,134.28L138.41,133.32L138.61,132.66L138.42,132.28L138.21,132.07L137.98,132.03L137.77,131.78L137.58,131.33L137.11,130.89L136.36,130.47L135.72,129.91L135.2,129.22L135.06,128.67L135.3,128.26L135.4,127.93L135.34,127.68L135.51,127.33L135.83,126.74L135.85,126.3L135.89,125.96L136.29,125.44L136.46,125.04L136.39,124.76L135.49,124.64L133.74,124.65L132.33,124.76L131.27,124.95L130.07,124.86L128.71,124.48L127.59,123.72L126.7,122.59L126.04,121.43L125.61,120.24L125.44,119.22L125.36,118.96L125.16,118.74L124.99,118.14L124.85,117.16L124.65,116.53L124.39,116.26L124.31,116.04L123.94,115.4L123.79,115.06L123.75,114.84L123.46,114.5L123.24,114.41L122.24,114.54L121.92,114.22L121.75,114.01L121.34,113.83L120.86,113.91L120.29,114.25L119.74,114.24L118.75,114L118.13,114.11L116.99,114.12L116.28,113.8L115.51,113.33L115.05,113.22L114.62,113.25L114.34,113.12L114.22,112.82L114.03,112.73L113.27,112.44L112.66,112.15L111.01,111.6L110.57,111.08L110.19,111.03L109.71,111.05L109.44,111.25L109.11,111.29L108.73,111.17L108.6,111.31L108.7,111.71L108.7,112.03L108.86,112.66L109.46,113.27L109.75,113.85L109.72,114.39L109.46,115.01L108.63,116.05L108.51,116.06L107.87,116.17L107.5,116.43L107.24,116.49L107.1,116.33L106.89,116.43L106.6,116.79L106.48,117.09L106.51,117.32L106.36,117.58L106.03,117.86L105.87,117.81L105.8,117.47L105.69,117.23L105.86,116.79L107.35,115.25L107.87,114.61L107.98,114.24L107.95,113.77L107.78,113.2L107.45,112.88L106.94,112.82L106.57,112.99L106.27,113.57L106.19,113.97L106.07,114.84L106.07,115.16L105.93,115.39L105.63,115.49L105.42,115.88L105.31,116.53L105.13,116.9L104.89,116.96L104.68,117.38L104.51,118.15L104.38,118.52L103.97,118.7L103.08,119.04L102.72,119.05L102.88,118.71L103.04,118.53L103.21,118.5L103.77,116.95L104.26,116.15L104.18,116.01L101.56,116.94L100.59,117.48L100.37,117.88L100.3,118.32L100.41,118.8L100.32,119.22L100.04,119.6L99.62,120.52L99.43,121.08L99.15,121.54L98.37,121.78L98.27,121.85L97.4,122.79L97.14,122.92L95.51,122.64L94.45,122.82L93.7,122.52L93.37,121.71L92.97,121.18L91.06,121.28L88.7,120.93L87.56,120.95L87.15,120.58L86.86,119.68L86.25,119.52L85.18,119.63L83.62,120.62L82.19,121.08L81.11,120.98L80.09,120.31L78.46,118.98L77.37,117.57L76.05,116.97L74.99,116.99L74.52,117.6L73.97,117.55L73.71,116.39L73.47,115.49L72.83,115.05L71.7,114.09L70.89,113.54L69.65,112.85L69.21,112.7L68.37,112.54L67.54,112.4L66.54,112.44L65.76,113.05L64.91,113.26L63.72,113.26L62.97,112.87L62.67,112.1L61.09,111.25L58.24,110.31L56.62,109.61L56.23,109.16L56.05,108.7L56.08,108.02L56.08,108.01L55.58,106.17L55.46,104.68L55.56,102.93L55.68,102.36L55.54,102.16L55.08,101.71ZM177.91,85.23L176.94,84.26L176.27,83.44L176.1,83.04L176.02,82.59L176.08,81.76L176.25,80.55L176.55,79.68L176.95,79.16L177.21,78.62L177.32,78.06L177.36,77.97L177.67,81.97ZM130.12,127.35L129.61,127.46L128,127.62L127.3,127.43L127.24,127.26L127.4,127.02L127.81,126.72L128.27,126.55L128.8,126.53L129.83,126.85L130.2,127.17ZM110.21,113.1L110.71,112.87L111.38,112.8L112.21,112.9L112.59,113.14L112.54,113.52L112.43,113.71L112.18,113.83L112.14,114.05L111.78,114.15L111.11,114.15L110.64,114.3L110.36,114.61L110.15,114.61L110,114.3L109.95,113.45ZM113.16,114.31L112.83,114.24L112.73,114.12L112.85,113.94L112.85,113.75L112.69,113.36L112.73,113.23L112.87,113.16L113.11,113.16L113.38,113.42L113.7,113.95L113.73,114.24ZM177.96,162.84L177.56,162.54L177.39,162.29L177.34,162.03L177.52,161.93L177.92,161.98L178.05,162.19L177.94,162.68ZM213.55,166.57L212.77,166.98L212.61,167.4L212.53,167.65L212.06,168.15L211.64,168.16L211.5,168.13L211.57,167.95L211.54,167.81L211.39,167.72L211.44,167.5L211.69,167.18L211.84,166.85L212.73,166.59L213.16,166.44L213.61,166.3ZM209.68,168.22L209.3,168.4L208.8,168.41L208.59,168.32L208.65,168.12L208.98,167.87L209.99,167.41L210.04,167.63ZM157.36,201.85L156.93,202L156.91,201.74L156.99,201.13L157.17,200.86L157.28,201L157.45,201.55ZM163.92,154.49L163.8,154.81L163.29,155.27L163.06,155.31L162.9,155.21L162.85,155.06L162.92,154.89L163.72,154.44ZM152.89,151.05L151.16,150.57L150.61,150.25L150.66,149.86L150.78,149.58L150.99,149.4L151.21,149.47L151.45,149.78L151.68,149.81L151.92,149.56L152.21,149.51L152.56,149.68L152.82,149.65L153,149.42L153.34,149.23L153.85,149.05L154.06,149.22L153.98,149.73L154.07,150.06L154.33,150.2L154.51,150.41L154.6,150.69L154.84,150.75L155.24,150.61L155.5,150.64L155.64,150.85L155.8,150.89L155.96,150.78L156.18,150.9L156.45,151.27L156.64,151.28L156.78,150.93L156.72,150.73L156.37,150.61L156.4,150.48L156.18,150.17L156.28,149.93L156.62,149.61L156.88,149.54L157.03,149.7L157.19,149.65L157.34,149.39L157.71,149.17L158.3,149.01L158.63,149.11L158.69,149.46L158.87,149.57L159.15,149.43L159.43,149.69L159.71,150.35L159.99,150.36L160.28,149.72L160.71,149.26L161.28,148.96L161.7,148.91L161.97,149.12L162.1,149.4L162.1,149.76L162.27,149.97L162.6,150.05L162.72,150.33L162.63,150.83L162.68,151.26L163,151.81L163.07,151.84L163.31,150.82L163.53,150.28L163.83,149.89L164.04,149.85L164.14,150.15L164.08,150.49L163.88,150.88L164,151.04L164.73,151.01L164.81,151.12L164.08,152.85L163.51,153.69L162.9,154.28L162.44,154.44L162.14,154.17L161.86,154.08L161.59,154.15L161.59,154.04L162.04,153.6L162.22,153.6L162.54,153.49L163.42,152.52L163.41,152.37L162.88,152.46L161.13,154.11L160.91,154.18L160.72,154.08L160.58,153.82L159.54,153.4L159.11,153.01L158.51,152.74L157.75,152.59L156.86,152.25L155.84,151.72L154.87,151.45L153.12,151.32ZM145.3,147.28L145.06,147.16L144.89,147.28L144.8,147.65L144.63,147.92L144.43,147.99L144.01,147.78L143.48,146.94L143.13,146.2L142.96,145.56L143.27,145.28L144.05,145.35L144.74,145.58L145.33,145.95L145.58,146.44L145.47,147.04ZM149.52,149.14L149.95,149.33L150.17,149.52L150.19,149.7L149.67,150.54L149.19,150.7L148.61,150.51L148.37,150.24L148.48,149.87L148.73,149.52L149.11,149.2Z" fill="var(--tb-map-land, currentColor)" fill-opacity="1" stroke="var(--tb-map-line, currentColor)" stroke-width=".65"><title>Ontario</title></path>
+<path d="M280,107.97L278.88,107.63L278.55,107.33L278.44,106.98L277.41,107.22L276.01,107.56L275.12,107.78L274.39,107.95L274.59,108.79L273.46,109.06L272.44,109.3L272.7,110.41L272.9,111.3L273.11,112.2L273.4,113.46L273.35,113.8L273.16,114.3L272.75,115.01L271.83,115.99L268.68,118.32L268.48,117.8L268.35,116.7L267.51,116.65L266.67,116.6L266.35,117.45L266.02,118.19L265.39,119.76L264.49,121.97L263.99,123.19L263.1,125.32L262.31,127.2L262.41,128.94L262.5,130.59L261.8,132L261.46,133.24L261.45,134.53L261.47,135.71L261.64,136.66L261.91,137.13L261.92,137.55L261.69,138.08L261.23,139.02L261.27,139.82L260.96,140.29L260.01,141.28L259.33,142.6L259.41,143.25L259.65,143.76L259.73,144.09L259.6,144.35L259.23,144.41L258.85,144.56L258.61,145.1L258.75,145.78L258.61,146.32L258.34,146.47L258.03,146.18L257.64,145.71L257.29,145.73L256.83,146.17L256.66,146.4L256.3,146.87L255.73,147.01L254.58,146.85L253.99,148.1L253.58,150.63L249.97,151.3L246.35,151.95L242.73,152.58L239.11,153.19L237.62,153.44L235.48,153.78L231.85,154.35L228.21,154.9L226.18,155.2L225.78,155.25L226.96,154.61L229.29,152.42L231.1,151.47L233.28,149.19L235.01,148.54L235.28,148.07L235.33,146.45L235.4,145.86L235.98,144.17L236.77,142.71L237.27,140.77L238.53,139.37L240.55,138.04L242.2,135.59L243.19,134.75L244.18,134.1L244.47,133.17L245.04,132.56L246.62,131.25L248.5,130.63L250.3,129.44L251.71,128.72L252.47,127.77L253.72,127.1L257.23,124.1L258.11,122.85L259.09,120.43L260.09,119.1L260.28,117.86L261.65,115.62L262.94,112.78L263.46,110.82L264.58,109.55L266.55,106.19L267.68,104.76L268.21,104.51L269.54,103.16L270.27,101.9L271.58,100.51L274.06,98.57L276.3,96.41L279.49,94.22L280,93.79L280,107.97ZM278.65,0L278.35,0.82L278.43,1.42L278.68,1.38L279.25,1.29L279.67,1.5L280,1.49L280,18.91L280,18.91L277.74,19.5L275.68,20.27L271.77,21.01L271.24,20.84L270.74,20.51L269.94,19.5L269.81,19.42L268.33,19.37L267.73,19.19L267.03,18.84L263.65,16.5L262.67,15.94L262.36,15.89L262.24,16.15L262.31,16.36L263.05,17.21L263.16,17.45L263.16,18.28L263.95,19.78L263.98,20.42L264.67,21.56L264.86,22.14L264.51,22.89L263.42,22.74L260.87,21.35L259.55,20.04L259.27,19.97L258.8,20.12L258.71,20.31L258.7,20.6L259.01,21.21L259.51,21.95L260.35,22.92L261.33,24.32L261.42,24.52L261.87,24.79L261.96,25.24L261.46,25.77L261.32,26.67L261.12,26.74L259.4,26.44L259.13,26.6L259.01,26.8L259.02,27.39L259.25,28.05L259.63,28.73L260.42,29.97L260.56,30.31L260.59,30.52L259.67,31.97L259.44,32.56L259.35,33.09L259.46,33.42L261.64,35.41L262.19,35.83L262.5,36.61L262.63,37.81L262.72,38.07L262.88,38.19L265.14,38.39L265.52,38.81L266.16,39.76L266.59,39.97L266.95,40L267.29,40.29L267.42,40.6L267.68,42.43L267.98,43.78L267.85,45.01L267.85,45.8L268,46.9L268.25,47.84L268.64,48.2L269.28,48.32L269.68,48.28L269.97,48.14L270.3,48.21L271.1,47.49L271.15,47.19L270.93,45.14L270.98,44.85L271.58,44.35L271.66,43.72L271.77,43.51L272.08,43.53L272.42,43.69L273.05,44.28L273.37,44.68L273.41,45.14L273.25,45.45L273.25,45.89L273.39,46.7L273.19,47.44L273.21,47.8L274.22,50.7L274.23,50.96L273.95,51.76L274.11,52.33L274.49,53.09L274.86,53.58L275.14,53.76L275.41,53.81L275.44,53.36L275.33,52.01L275.43,51.91L276.62,52.52L277.06,52.66L277.84,53.77L278.35,54L279.14,54.13L279.56,54.05L279.67,53.87L279.73,53.33L280,53.31L280,78.59L280,78.59L279.66,78.72L279.03,80.05L277.7,81.32L276.63,86.67L276.87,88.57L276.32,90.03L275.6,90.39L274.97,90.57L271.21,92.46L269.6,93.6L270.22,94.07L269.73,94.64L268.83,95.04L267.92,95.81L267.39,96.56L267.26,97.47L265.49,99.29L263.77,102.96L263.12,105.51L262.06,107.48L261.2,108.33L260.51,108.58L259.74,108.54L258.36,108.01L257.46,108.11L255.02,107.47L249.67,107.39L250.53,107.65L251.34,108.2L252.73,108.1L254.11,107.81L257.26,108.59L258.77,108.76L259.72,108.99L260.64,109.75L260.49,111.65L260.27,113.24L259.78,114.52L257.87,117.95L256.85,119.18L255.42,123.1L253.52,125.17L252.52,126.41L251.56,128.24L248.79,130L247.73,130.52L246.67,130.54L245.6,131.75L244.22,132.61L243.94,133.6L240.78,136.66L239.45,137.2L238.39,138.05L238.22,139.21L237.28,140.05L237.07,140.61L236.43,142.3L235.1,144.56L233.13,145.22L232.49,146.03L231.81,147.28L230.71,148.24L228.26,148.24L228.91,148.62L231.17,149.04L231.56,150.09L230.52,150.52L228.62,152.18L227.89,151.6L227.23,151.08L227.31,150.11L227.44,148.64L227.49,147.89L225.81,147.32L224.57,147.25L223.32,147.54L220.81,148.73L217.04,150.81L214.67,151.49L213.73,150.81L212.64,150.68L211.39,151.09L210.13,151.09L208.85,150.66L207.72,149.53L206.74,147.68L206.02,146.73L205.6,146.68L205.44,146.67L205.26,146.87L205.23,147.58L205.12,147.83L204.82,147.9L204.34,147.83L203.7,147.58L202.46,146.83L202.13,146.54L201.96,146.14L201.85,145.97L201.06,144.97L201.04,144.96L198.22,143.7L191.41,142.84L188.57,142L187.42,140.93L186.35,139.51L184.84,136.86L182.96,134.56L182.26,133.21L182.11,132.04L181.71,130.92L181.06,129.86L180.88,128.92L181.2,128.04L181.2,127.97L180.93,124.43L180.69,121.4L180.46,118.37L180.23,115.34L180,112.31L179.76,109.28L179.53,106.25L179.3,103.21L179.07,100.18L178.83,97.15L178.6,94.11L178.37,91.08L178.13,88.04L177.97,85.83L178.5,86.33L179.46,87.68L179.13,86.8L178.49,85.8L177.91,85.23L177.67,81.97L177.36,77.97L177.52,77.63L178.68,76.81L179.01,76.85L179.33,77.72L179.64,77.88L180.21,77.98L180.71,78.25L181.14,78.69L181.45,79.15L181.65,79.63L182.15,81.19L182.47,81.91L182.44,81.01L182.63,79.58L182.81,78.98L183.48,78.07L183.41,77.71L183.06,77.24L181.34,75.26L181.27,74.75L181.65,74.41L181.88,73.81L181.96,72.94L182.24,72.29L183.12,71.33L183.83,69.92L184.17,68.96L184.47,68.44L184.79,68.29L184.27,67.96L184.15,67.73L184.02,66.62L183.71,65.47L183.34,64.96L182.31,63.88L182.13,63.54L181.85,62.24L181.89,61.58L182.08,61L181.9,60.48L180.97,59.59L180.57,58.77L180.03,56.76L179.49,54.22L178.96,52.36L178.44,51.19L178.29,50.44L178.49,50.1L178.71,49.13L178.97,48.87L179.39,48.9L179.39,48.79L178.71,48.33L178.34,47.71L178.34,47.47L178.85,46.79L178.72,46.52L178.28,46.21L176.97,45.72L177.4,45.46L177.65,44.93L177.58,44.78L177.07,44.62L176.46,44.27L175.98,43.72L175.37,42.84L174.99,42.14L174.57,40.94L173.92,39.6L173.65,39.27L173.36,39.07L173.04,38.99L173.03,38.78L173.35,38.43L178.55,35.7L178.97,35.33L181.49,33.81L182.63,32.98L183.77,31.82L185.34,30.6L186.09,29.83L186.54,29.11L188.9,26.2L189.87,24.72L190.39,23.49L191.16,22L192.2,20.25L192.81,18.78L192.99,17.59L193.16,15.55L193.06,13.78L192.83,11.18L192.52,8.88L191.78,5.3L191.46,4.19L190.94,2.88L189.76,0.26L189.68,0L278.65,0ZM253.4,126.9L252.66,127.15L252.76,126.69L253.64,125.72L254.32,125.15L254.77,125.07L254.22,126.15ZM234.85,148.01L234.22,148.36L233.05,148.31L231.84,148.82L231.49,148.88L232.28,147.82L233.63,147.04L234.77,145.09L235.17,144.98L234.94,147.02L234.94,147.74ZM233.51,146.75L232.51,147.17L232.13,147.11L233.09,145.72L234.36,145.24Z" fill="var(--tb-map-land, currentColor)" fill-opacity=".58" stroke="var(--tb-map-line, currentColor)" stroke-width=".65"><title>Québec</title></path>
+<path d="M158.87,186.01L158.87,186.01L158.34,189.49L157.86,190.93L156.97,191.79L157.01,191.58L157.09,191.33L157.04,190.5L156.87,190.19L156.53,190.07L156.11,190.18L155.61,190.51L155.46,190.83L155.66,191.15L155.56,191.45L155.15,191.72L154.9,192.34L154.8,193.3L154.65,193.9L154.43,194.13L153.6,194.51L153.18,194.82L152.8,195.28L152.47,196.02L152.19,197.04L152.09,197.82L152.21,198.25L151.95,198.53L151.49,199.05L151.4,199.24L151.44,199.54L151.35,199.69L151.12,199.69L150.94,199.84L150.52,200.39L149.81,201.81L149.7,202.07L149.61,202.15L146.48,202.33L143.36,202.49L140.23,202.64L137.1,202.77L137.1,202.05L134.25,202.05L131.41,202.04L128.56,202.01L125.71,201.98L122.87,201.93L120.03,201.87L117.7,201.82L118.32,201.48L119.33,200.7L119.9,200L120.46,199.06L121,197.9L122.09,196.17L122.62,195.11L123.13,193.78L123.53,192.37L123.8,190.9L123.94,189.37L123.96,187.79L123.74,186.19L123.28,184.57L123.04,183.75L122.94,183.52L122.12,181.45L121.2,178.56L121.22,178.32L122.16,176.63L122.19,176.4L122.12,175.01L121.94,174.31L121.5,173.37L121.52,173.13L122.48,171.96L123.06,171.06L123.59,169.97L123.94,168.69L124.12,167.22L124.13,166.24L123.98,165.75L124,165.38L124.2,165.11L125.19,164.79L125.53,164.21L125.62,163.19L125.83,162.69L126.16,162.7L126.47,162.5L126.76,162.07L127.14,161.96L127.6,162.15L128.26,161.52L129.11,160.08L129.76,159.28L130.21,159.11L130.29,159.25L130.01,159.68L129.92,160.15L130.02,160.67L129.93,161.17L129.71,161.85L129.84,162.07L129.47,163.17L129.45,163.72L129.66,164.14L129.93,163.99L130.23,163.28L130.32,162.91L130.2,162.86L130.25,162.56L130.47,162L130.66,161.74L130.82,161.77L130.86,162.07L130.79,162.65L130.3,164.01L130.2,164.43L130.31,164.54L130.89,163.69L131.38,162.33L131.75,161.29L131.82,160.73L131.72,159.26L131.74,158.66L131.88,158.24L132.38,157.78L133.23,157.26L134.07,156.98L134.9,156.95L135.47,156.81L135.8,156.56L135.68,156.36L135.13,156.21L134.71,155.88L134.42,155.38L134.32,154.8L134.42,154.15L134.77,153.51L135.38,152.88L135.57,152.42L135.35,152.12L135.61,152.02L136.35,152.1L136.87,152.02L137.17,151.77L137.25,151.8L137.87,152.03L138.99,152.8L140.05,153.24L141.06,153.36L141.79,153.62L142.26,154.03L142.6,154.5L142.81,155.01L143.29,155.3L144.05,155.35L144.65,155.57L145.09,155.93L147.51,156.85L148.53,157.34L149.1,157.83L149.27,158.14L149.23,158.46L149.29,158.79L149.72,159.44L149.88,159.49L149.98,159.81L150.03,160.38L150.16,160.76L150.37,160.95L150.25,161.03L149.49,160.72L149.07,160.83L148.88,161.26L148.86,161.67L149.01,162.05L149.99,163.18L150.27,164.22L150.34,165.49L150.23,165.99L150.16,167.08L150.11,168.76L150.11,169.34L149.8,169.91L148.96,170.74L148.94,170.59L148.73,170.55L148.51,170.68L148.21,171.38L147.97,172.65L147.65,173.35L147.27,173.46L147.04,173.65L146.96,173.91L146.55,174.09L145.8,174.19L145.29,174.58L144.92,175.67L144.94,176.19L144.77,176.84L144.79,177.39L145,177.85L145.62,178.3L146.65,178.75L147.27,178.8L147.68,178.6L148.11,177.84L148.53,177.54L149.04,177.4L149.23,177.05L150.05,175.53L150.04,175.19L149.73,175.07L149.77,174.98L150.17,174.91L150.51,174.7L150.8,174.35L151.31,174.07L152.56,173.65L153.22,173.18L153.64,173.1L154.27,173.32L155.1,173.85L155.77,174.63L156.28,175.67L156.97,178.39L157.85,182.78L158.44,185.23L158.73,185.75L158.87,186.01ZM112.22,159.95L111.8,159.77L111.47,159.26L111.27,158.75L111.27,158.23L111.83,156.97L111.88,156.77L111.83,156.65L111.55,156.49L110.91,156.7L110.26,156.72L110.06,156.62L109.99,156.4L110.01,156.06L110.15,155.65L110.57,154.92L110.6,154.2L110.79,153.79L110.65,153.03L110.71,152.67L110.46,152.26L109.76,151.7L108.1,150.93L108.31,150.16L108.25,149.82L107.86,149.3L106.13,148.64L104.95,148.31L103.77,148.25L102.93,147.99L101.99,147.88L101.4,147.49L100.81,147.11L100.22,146.72L99.63,146.34L98.57,145.97L97.51,145.61L96.45,145.24L95.4,144.87L94.34,144.51L93.29,144.13L92.24,143.76L91.19,143.39L90.98,142.84L90.78,142.3L90.58,141.76L90.38,141.22L89.9,140.96L89.65,140.83L89.48,140.54L89.03,140.63L88.89,140.16L88.94,140.07L89.51,139.99L91.16,139.46L92.58,138.76L93.78,137.9L95.22,137.42L96.92,137.31L98.15,137.06L98.9,136.65L99.92,135.82L100.48,135.59L101.18,135.55L101.71,135.24L102.09,134.65L102.78,134L103.79,133.28L104.35,133L104.48,133.15L104.52,133.43L104.46,133.82L104.68,134.16L105.19,134.43L105.41,134.77L105.34,135.17L105.47,135.52L105.78,135.83L105.83,136.45L105.64,137.4L105.59,138.02L105.69,138.31L105.8,138.47L105.99,138.33L106.24,138L106.33,137.8L106.4,137.59L107.86,136.69L108.14,136.65L108.59,136.92L110.72,137.36L111.56,137.64L112.43,138.23L112.72,138.45L113.75,140.28L114.22,141L114.53,141.2L114.69,141.48L114.81,142.12L114.98,142.32L116.58,142.5L117.31,142.41L117.76,142.16L118.24,142.34L118.77,142.94L119.3,143.12L119.83,142.87L120.32,142.9L120.78,143.18L120.99,143.39L121.13,143.38L122.06,142.5L123.18,141.73L124.66,140.9L125.51,140.53L125.75,140.63L127.1,140.36L128.31,140.35L129.92,140.54L131.41,140.35L132.79,139.78L134,139.46L135.06,139.4L135.46,139.56L135.2,139.95L135.06,140.61L135.04,141.56L134.95,142.16L134.79,142.41L134.77,142.65L134.89,142.88L135.92,143.02L136.46,143.33L137.08,143.34L137.78,143.06L138.32,143.16L138.69,143.65L139.23,143.74L139.76,143.38L140.12,143.05L140.44,142.9L140.69,142.87L140.95,143.03L141.13,143.31L141.59,144.07L141.81,144.59L141.96,145.37L142.06,145.63L142.05,146.08L141.75,146.39L141.67,146.63L141.85,146.87L142.88,146.93L143.34,147.17L143.52,147.43L143.41,147.73L143.48,148.05L143.73,148.38L144.56,148.88L144.76,149.12L144.71,149.38L144.46,149.55L144.04,149.63L140.89,149.19L139.97,149.11L139.84,149.29L139.75,149.32L139.6,149.27L139.33,149.26L139.2,149.15L139.08,148.83L138.81,148.63L138.37,148.54L138,148.79L137.57,149.74L137.64,149.91L137.57,150.52L137.68,150.69L137.67,150.82L137.55,150.94L137.3,150.92L136.9,150.78L135.43,149.35L134.31,148.63L132.94,148.1L131.85,147.84L131.05,147.85L130.38,148.21L129.86,148.93L129.05,149.33L127.96,149.42L127.36,149.61L127.26,149.9L126.87,149.9L126.17,149.61L125.45,149.52L124.71,149.63L124.16,149.91L123.56,150.78L123.44,151.22L123.01,151.59L121.89,152.16L121.83,152.38L121.23,153.04L121.04,153.41L121.03,153.77L120.84,153.74L120.45,153.33L120.45,152.77L120.83,152.09L121.16,151.76L121.44,151.79L121.63,151.49L121.71,150.85L121.61,150.53L121.06,150.65L120.76,150.89L120.39,150.94L119.95,150.78L119.56,151.12L119.2,151.95L118.78,152.49L118.3,152.73L117.99,152.44L117.85,151.6L117.87,150.95L118.08,150.17L117.99,150.01L117.78,150.26L117.47,150.91L117.03,152.33L116.76,152.79L116.41,152.98L115.84,153.83L115.04,155.34L114.15,156.81L113.16,158.22L112.56,158.98L112.37,159.08L112.27,159.34ZM102.63,124.06L102.25,124.17L102.2,124.38L102.5,124.46L102.44,124.56L102.1,124.73L101.15,125.06L100.52,125.15L100.2,124.99L100.18,124.73L100.46,124.37L100.47,124.18L100.21,124.17L100.28,124.02L100.68,123.75L104.03,122.03L105.45,121.41L106.2,121.23L106.31,121.34L105.48,122.02L105.33,122.3L105.36,122.5L105.07,122.86ZM111.7,131.07L109.75,131.23L109.7,131.31L110.06,131.55L110.12,131.72L109.76,132.13L107.96,133.44L107.78,133.84L107.8,134.08L106.73,135.11L106.32,135.77L106.01,135.86L105.78,135.39L105.8,135.01L106.06,134.75L106.33,134.36L106.39,133.81L106.3,133.6L105.96,134.09L106.13,134.2L106.18,134.29L106.11,134.46L104.94,134.14L104.61,133.74L104.69,133.2L105.12,132.54L106.61,131.14L107.25,130.77L109.04,130.2L110.02,130.09L111,130.13L111.7,130.37L112.12,130.81ZM142.34,145.11L142.61,145.33L142.77,145.6L142.81,145.9L142.76,146.08L142.64,146.15L142.21,145.67L142.11,145.37L142.17,145.12ZM125.92,159.69L126.39,159.78L126.55,160.01L126.58,160.38L126.47,160.55L126.23,160.54L126.03,160.36L125.85,159.81ZM130.9,152.19L130.82,152.32L130.89,153.41L130.74,153.89L130.37,154.16L130.07,154.22L129.84,154.07L129.88,153.49L130.2,152.47L130.5,152ZM147.92,148.79L148.14,148.91L148.23,149.19L148.03,149.61L147.43,149.83L146.19,149.83L145.39,149.68L145.01,149.39L144.93,149.24L144.96,148.92L145.14,148.89L145.4,149.06L145.79,148.98L146.31,148.64L146.58,148.39L146.6,148.22L146.43,147.91L146.56,147.78L147.22,147.89L147.46,148.09ZM140.15,151.61L140.25,151.51L140.57,151.84L140.63,152.12L140.49,152.36L140.3,152.49L140.05,152.51L139.65,152.28L138.98,151.65L139.03,151.44ZM142.65,144.9L142.38,144.84L142.16,144.66L141.98,144.36L141.75,143.61L141.41,143.07L141.91,142.46L142.21,142.39L142.53,142.52L142.58,142.87L142.35,143.45L142.37,144.03L142.64,144.63Z" fill="var(--tb-map-land, currentColor)" fill-opacity=".58" stroke="var(--tb-map-line, currentColor)" stroke-width=".65"><title>Michigan</title></path>
+<path d="M36.06,103.32L37.04,103.49L40.47,104.05L43.9,104.6L47.33,105.12L50.77,105.63L52.67,105.91L53.07,103.29L53.38,101.22L55.08,101.71L55.54,102.16L55.68,102.36L55.56,102.93L55.46,104.68L55.58,106.17L56.08,108.01L56.08,108.02L56.05,108.7L56.23,109.16L56.62,109.61L58.24,110.31L61.09,111.25L62.67,112.1L62.97,112.87L63.72,113.26L64.91,113.26L65.76,113.05L66.54,112.44L67.54,112.4L68.37,112.54L69.21,112.7L69.65,112.85L70.89,113.54L71.7,114.09L72.83,115.05L73.47,115.49L73.71,116.39L73.97,117.55L74.52,117.6L74.99,116.99L76.05,116.97L77.37,117.57L78.46,118.98L80.09,120.31L81.11,120.98L82.19,121.08L83.62,120.62L85.18,119.63L86.25,119.52L86.86,119.68L87.15,120.58L87.56,120.95L88.7,120.93L91.06,121.28L92.97,121.18L93.37,121.71L93.7,122.52L94.45,122.82L95.51,122.64L97.14,122.92L96.9,123.03L96.66,122.99L96.33,123.16L95.91,123.53L94.97,124.05L93.49,124.7L91.8,125.27L88.37,126.26L86.19,127.38L85.2,128.07L81.27,131.63L78.9,133.49L75.08,136.04L74.71,136.37L74.65,136.71L74.5,136.68L73.84,137.32L73.55,137.75L72.96,137.82L72.78,139.61L72.59,141.41L72.41,143.2L72.23,145L71.93,145.15L71.53,145.54L71.02,145.59L68.55,146.83L68.12,147.21L67.6,148.15L66.71,149.18L66.46,149.75L66.41,150.55L67.51,151.32L67.88,151.98L68.02,152.76L67.92,153.41L67.19,154.62L67.03,155.12L66.92,156.69L66.57,157.15L66.68,158.44L66.65,158.88L66.31,160.25L66.14,160.64L66.3,161.38L66.32,161.46L67.33,162.58L68.21,163.23L69.04,163.49L69.66,163.99L70.07,164.71L70.67,165.22L71.46,165.51L72.24,166.16L73.38,167.66L73.9,168.89L74.94,169.84L76.66,170.9L77.77,171.79L78.28,172.52L78.5,174.27L78.49,177.96L75.5,177.7L72.55,177.43L69.61,177.14L66.67,176.85L63.73,176.53L60.79,176.21L57.85,175.87L54.92,175.52L51.99,175.16L49.05,174.78L46.12,174.39L43.2,173.98L40.27,173.57L37.34,173.14L34.42,172.7L31.5,172.24L31.94,169.48L32.38,166.71L32.81,163.95L33.25,161.18L33.69,158.42L34.13,155.65L34.57,152.88L35.01,150.11L34.5,149.08L33.18,148.11L32.89,147.61L32.4,146.39L32.22,145.87L32.23,145.49L32.62,145.14L34.11,144.16L34.61,143.68L34.9,143.17L35.39,141.99L35.42,141.03L35.74,139.57L35.65,138.42L35.69,137.87L35.63,137.16L34.96,135.2L34.97,133.71L34.85,132.96L35.07,131.1L35.18,130.59L35.53,129.62L35.24,128.88L35.27,128.32L35.8,123.9L35.78,123.25L36.15,121.22L35.78,118.96L35.55,118.18L35.53,117.27L35.61,116.85L35.27,115.29L35.15,113.62L35.42,112.23L35.48,111.15L35.66,110.34L35.76,109.09L36,108.41L36.19,107.32Z" fill="var(--tb-map-land, currentColor)" fill-opacity=".58" stroke="var(--tb-map-line, currentColor)" stroke-width=".65"><title>Minnesota</title></path>
+<path d="M189.46,183.11L189.46,183.11L189.35,180.98L189.33,180.92L189.4,180.88L192.63,179.66L194.7,179.15L197.26,178.82L200.36,179L201.59,179.3L202.39,179.77L203.27,179.82L204.23,179.47L205.58,179.24L207.33,179.14L208.28,179.16L208.42,179.32L208.53,179.25L208.62,178.97L209.05,178.62L210.31,178.03L210.49,178.1L210.73,177.84L211.03,177.25L211.62,176.57L212.51,175.8L213.34,175.35L214.12,175.23L214.62,175.01L214.85,174.68L214.9,174.4L214.77,174.19L214.78,173.93L214.81,173.8L214.76,173.7L214.64,173.5L214.43,172.43L214.22,171.94L213.97,171.59L213.67,171.38L213.67,171.12L214.1,170.75L214.1,171.05L214.23,171.12L214.44,170.96L214.86,170.25L214.88,170L215.19,169.71L215.39,169.29L215.1,169.27L214.46,169.46L214.3,169.36L214.57,168.8L214.47,168.51L214.35,168.4L214.13,168.38L213.44,168.92L213.22,168.99L213.16,168.75L212.71,168.26L213.62,167.18L216.9,164.09L217.21,163.64L217.3,163.26L217.16,162.96L217.05,162.89L217.1,162.81L220.1,158.95L221.84,157.12L223.32,156.02L224.49,155.44L225.32,155.38L225.78,155.25L226.18,155.2L228.21,154.9L231.85,154.35L235.48,153.78L237.62,153.44L237.82,154.25L237.79,155.25L238.11,156.27L238.26,158.5L239.08,160.1L239.13,161.26L239.36,162.47L239.32,162.78L238.99,163.56L238.85,164.29L238.82,165.01L238.9,165.46L239.59,167.4L239.81,168.27L239.88,168.78L239.81,170.49L239.87,170.96L239.98,171.08L240.11,171.07L240.4,170.49L240.56,170.39L240.8,170.48L241.45,171.17L241.65,172.57L241.79,173.59L241.95,174.72L242.19,176.41L242.37,177.65L242.53,178.79L242.65,179.65L242.63,180.31L242.99,181.01L242.87,182.09L242.75,183.17L242.63,184.25L242.5,185.33L242.38,186.4L242.25,187.48L242.12,188.56L242,189.63L242.29,189.89L242.4,191.07L242.51,192.24L242.62,193.42L242.73,194.59L242.84,195.77L242.95,196.94L243.06,198.11L243.17,199.29L243.53,199.71L243.89,200.14L243.57,200.42L243.08,200.84L242.56,201.3L241.87,201.89L242.35,202.44L242.96,203.13L242.62,203.51L241.78,204.74L241.18,205.42L240.65,205.69L240.38,206.22L240.05,206.59L240.25,205.47L240.51,204.51L240.57,202.71L240.25,201.32L239.76,200.8L239.28,200.47L239.99,201.79L240.33,203.49L240.33,203.54L239.34,203.12L238.32,202.7L237.31,202.28L236.3,201.86L235.29,201.44L234.28,201.02L233.27,200.59L232.26,200.16L232,199.73L231.61,199.42L229.85,199.04L229.36,198.69L228.9,198.19L228.54,197.54L228.3,196.84L228.22,196.27L228.25,195.62L227.81,195.25L227.75,194.85L227.47,194.62L226.32,194.29L225.9,193.67L225.1,193.12L223.82,193.29L222.55,193.46L221.27,193.62L219.99,193.78L218.71,193.94L217.43,194.1L216.15,194.25L214.87,194.4L213.59,194.55L212.31,194.7L211.03,194.84L209.75,194.98L208.47,195.12L207.19,195.26L205.91,195.39L204.63,195.52L203.34,195.65L202.06,195.78L200.78,195.9L199.5,196.02L198.21,196.14L196.93,196.26L195.65,196.38L194.36,196.49L193.08,196.6L191.8,196.71L190.51,196.81L189.23,196.91L187.94,197.01L186.66,197.11L185.37,197.21L184.09,197.3L183.97,195.63L183.85,193.97L183.84,193.9L184.37,193.56L186.06,192.3L186.88,191.41L187.76,190.66L188.7,190.05L189.42,189.29L189.93,188.39L190.51,187.71L191.17,187.24L191.5,186.78L191.51,186.31L191.34,185.71L190.96,184.96L190.87,184.35L191.05,183.89L191.08,183.58L190.94,183.44ZM253.49,201.47L252.96,202.37L253.58,202.35L254.06,202.02L254.47,201.47L255.5,200.64L256.42,200.19L256.71,200.08L257.25,200.44L258.11,199.92L259.01,199.55L255.29,202.31L254.49,202.68L253.4,203.49L252.34,204.12L251.55,204.41L247.73,206.6L247.41,206.68L247.04,206.59L243.8,207.91L242.43,208.21L241.22,208.68L242.05,207.91L242.03,207.67L241.78,207.52L241.3,207.65L240.88,208.38L240.1,208.72L239.83,208.04L240.02,207.45L240.31,206.88L240.99,205.95L242.07,205.25L242.58,204.72L243.05,205.05L243.05,204.5L243.32,204.15L243.63,203.93L244.44,203.8L244.87,203.65L245.15,203.42L245.47,203.34L246.4,203.43L247.26,203.22L247.91,202.78L248.62,202.54L250.53,202.15L252.4,201.58L253.09,201.02L254.48,199.54L255.34,199.04L254.15,200.69ZM238.57,209.68L238.12,209.79L238.4,208.55L239.15,207.89L239.47,207.96L239.54,208.37L239.48,208.74L239,209.37ZM190.27,184.48L190.06,184.35L189.97,184.09L189.99,183.75L190.22,183.58L190.89,183.66L190.92,183.79L190.79,184.05L190.55,184.5Z" fill="var(--tb-map-land, currentColor)" fill-opacity=".58" stroke="var(--tb-map-line, currentColor)" stroke-width=".65"><title>New York</title></path>
+<path d="M137.03,216L137.04,214.86L137.06,210.83L137.08,206.8L137.1,202.77L140.23,202.64L143.36,202.49L146.48,202.33L149.61,202.15L149.7,202.07L149.68,202.11L149.81,202.33L150.66,202.44L151.25,202.69L151.71,203.06L153.36,203.78L153.87,204.24L154.38,204.48L154.87,204.51L155.21,204.36L155.38,204.01L155.61,203.98L155.9,204.27L156.83,204.56L156.86,204.66L154.33,205.3L153.8,205.58L154.45,205.75L155.09,205.68L155.73,205.39L156.48,205.38L157.14,205.49L157.35,205.38L157.43,205.32L158.57,206.02L158.99,206.12L159.42,206.02L159.86,205.73L160.83,205.33L162.33,204.82L163.78,204.58L165.19,204.6L166.07,204.44L166.86,203.94L168.58,202.33L170.56,201L173.85,199.3L177.03,197.91L177.03,197.91L177.1,198.95L177.18,200.24L177.26,201.54L177.34,202.84L177.42,204.14L177.5,205.43L177.58,206.73L177.66,208.03L177.74,209.32L177.82,210.62L177.9,211.91L177.98,213.21L178.07,214.51L176.97,215.12L176.79,215.63L177.02,216L137.03,216Z" fill="var(--tb-map-land, currentColor)" fill-opacity=".58" stroke="var(--tb-map-line, currentColor)" stroke-width=".65"><title>Ohio</title></path>
+<path d="M178.15,216L178.14,215.93L178.07,214.51L177.98,213.21L177.9,211.91L177.82,210.62L177.74,209.32L177.66,208.03L177.58,206.73L177.5,205.43L177.42,204.14L177.34,202.84L177.26,201.54L177.18,200.24L177.1,198.95L177.03,197.91L178.73,197.17L179.47,196.69L180.22,196.22L180.61,195.96L181.05,195.71L183.84,193.9L183.84,193.9L183.85,193.97L183.97,195.63L184.09,197.3L185.37,197.21L186.66,197.11L187.94,197.01L189.23,196.91L190.51,196.81L191.8,196.71L193.08,196.6L194.36,196.49L195.65,196.38L196.93,196.26L198.21,196.14L199.5,196.02L200.78,195.9L202.06,195.78L203.34,195.65L204.63,195.52L205.91,195.39L207.19,195.26L208.47,195.12L209.75,194.98L211.03,194.84L212.31,194.7L213.59,194.55L214.87,194.4L216.15,194.25L217.43,194.1L218.71,193.94L219.99,193.78L221.27,193.62L222.55,193.46L223.82,193.29L225.1,193.12L225.9,193.67L226.32,194.29L227.47,194.62L227.75,194.85L227.81,195.25L228.25,195.62L228.22,196.27L228.3,196.84L228.54,197.54L228.9,198.19L229.36,198.69L229.85,199.04L231.61,199.42L232,199.73L232.26,200.16L231.58,200.66L231.3,201L231.08,201.44L230.61,202.92L229.66,204.35L228.89,205.11L228.94,205.44L229.54,206.45L229.58,206.8L229.33,207.51L228.77,207.92L228.72,208.32L228.75,208.99L228.94,210.14L229.14,210.35L229.9,210.66L230.7,212.08L231.28,212.19L234.01,214.94L232.59,216L178.15,216Z" fill="var(--tb-map-land, currentColor)" fill-opacity=".58" stroke="var(--tb-map-line, currentColor)" stroke-width=".65"><title>Pennsylvania</title></path>
+<path d="M82.92,190.67L82.86,190.57L82.67,189.44L81.81,188.54L80.28,187.88L79.34,186.95L78.99,185.76L78.82,184.44L78.83,182.99L79.05,181.79L79.5,180.85L79.47,180.18L78.94,179.79L78.61,179.31L78.48,178.74L78.49,177.96L78.5,174.27L78.28,172.52L77.77,171.79L76.66,170.9L74.94,169.84L73.9,168.89L73.38,167.66L72.24,166.16L71.46,165.51L70.67,165.22L70.07,164.71L69.66,163.99L69.04,163.49L68.21,163.23L67.33,162.58L66.32,161.46L66.3,161.38L66.14,160.64L66.31,160.25L66.65,158.88L66.68,158.44L66.57,157.15L66.92,156.69L67.03,155.12L67.19,154.62L67.92,153.41L68.02,152.76L67.88,151.98L67.51,151.32L66.41,150.55L66.46,149.75L66.71,149.18L67.6,148.15L68.12,147.21L68.55,146.83L71.02,145.59L71.53,145.54L71.93,145.15L72.23,145L72.41,143.2L72.59,141.41L72.78,139.61L72.96,137.82L73.55,137.75L73.84,137.32L74.5,136.68L74.65,136.71L74.65,136.71L74.91,137.06L75.59,137.6L76.15,137.71L76.89,137.68L79.82,137.14L81.08,136.69L82.34,135.86L82.46,135.84L82.94,136.05L83.09,136.15L84.71,135.2L85.23,135.1L85.62,135.17L86.08,135.63L86.17,135.89L85.97,136.38L85.47,137.07L85.2,137.67L85.17,138.17L84.94,138.69L84.39,139.38L84.55,139.6L85.9,139.17L86.11,138.98L86.14,138.86L86.07,138.71L86.22,138.65L87.19,139.45L87.85,139.9L88.41,140.14L88.94,140.07L88.89,140.16L89.03,140.63L89.48,140.54L89.65,140.83L89.9,140.96L90.38,141.22L90.58,141.76L90.78,142.3L90.98,142.84L91.19,143.39L92.24,143.76L93.29,144.13L94.34,144.51L95.4,144.87L96.45,145.24L97.51,145.61L98.57,145.97L99.63,146.34L100.22,146.72L100.81,147.11L101.4,147.49L101.99,147.88L102.93,147.99L103.77,148.25L104.95,148.31L106.13,148.64L107.86,149.3L108.25,149.82L108.31,150.16L108.1,150.93L109.76,151.7L110.46,152.26L110.71,152.67L110.65,153.03L110.79,153.79L110.6,154.2L110.57,154.92L110.15,155.65L110.01,156.06L109.99,156.4L110.06,156.62L110.26,156.72L110.91,156.7L111.55,156.49L111.83,156.65L111.88,156.77L111.83,156.97L111.27,158.23L111.27,158.75L111.47,159.26L111.8,159.77L112.22,159.95L112.19,160.27L112,160.89L111.48,161.37L110.16,161.95L109.94,162.36L109.9,162.71L109,164.13L108.55,165.01L108.24,165.92L108.3,166.51L108.74,166.77L109.1,166.69L109.39,166.28L109.82,165.91L110.4,165.59L110.83,165.1L111.45,163.9L112.12,163.21L112.46,163.18L112.55,163.21L113.23,162.91L113.76,163.04L114.07,163.53L114.39,163.87L114.45,164.18L114.26,164.87L113.93,165.59L113.46,166.34L113.02,167.47L112.6,168.99L112.48,170.14L112.66,170.93L112.44,171.62L111.8,172.22L111.28,173.02L110.87,174.03L110.62,174.89L110.54,175.59L110.58,176.11L110.78,176.83L110.75,177.18L110.02,178.71L109.75,179.46L109.68,180.05L109.49,180.63L108.93,181.81L108.74,182.46L108.69,183.07L108.77,184.07L108.69,184.41L108.71,184.67L108.83,184.84L108.81,185.16L108.66,185.61L108.7,185.97L108.93,186.23L109.06,186.72L109.1,187.43L109.25,188.04L109.53,188.53L109.55,189.22L109.33,190.12L109.17,191.82L109.15,192.39L107.97,192.34L103.8,192.13L99.64,191.89L95.48,191.63L91.32,191.34L87.16,191.02ZM89.34,134.43L89.18,134.64L88.89,134.82L88.79,134.72L88.89,134.34L89.04,134.13L89.26,134.08L89.36,134.18ZM88.06,135.9L87.78,135.95L87.17,135.79L87.2,135.61L87.85,135.41L88.14,135.36L88.2,135.47ZM87.07,136.97L86.85,137.14L86.81,137.33L86.54,137.49L86.04,137.62L85.84,137.57L85.94,137.35L86.22,137.08L87.4,136.47L87.6,136.5L87.64,136.67ZM117.19,157.68L117.58,157.77L117.74,158.04L117.67,158.46L117.51,158.62L117.24,158.5L117.12,158.74L117.17,159.31L117.07,159.58L116.83,159.53L116.82,159.63L117.02,159.9L117.04,160.18L116.86,160.48L116.69,160.61L116.54,160.59L116.29,160.93L115.94,161.63L115.81,162.04L115.91,162.16L115.83,162.4L114.98,163.46L114.66,163.55L114.32,163.39L114.09,163.06L113.96,162.58L113.93,162.2L114,161.94L114.75,161L115.09,160.38L115.29,159.68L115.63,159.24L116.12,159.06L116.52,158.64L116.84,157.96ZM118.31,156.3L118.73,156.32L118.87,156.4L118.91,156.58L118.85,157.1L118.59,157.22L118.1,157.16L117.94,156.88L118.21,156.17Z" fill="var(--tb-map-land, currentColor)" fill-opacity=".58" stroke="var(--tb-map-line, currentColor)" stroke-width=".65"><title>Wisconsin</title></path></g>
+<g fill="var(--tb-map-ink, currentColor)" style="font-family:inherit;font-size:18px;font-weight:400">
+<text x="135.2" y="105.3" text-anchor="middle">ONTARIO</text>
+<text x="221" y="100.5" text-anchor="middle">Québec</text>
+<text x="135.2" y="164.2" text-anchor="middle">Michigan</text>
+<text x="142.2" y="30.9" text-anchor="middle">Hudson Bay</text>
+</g>
+<circle cx="186.04" cy="176.55" r="8" fill="var(--tb-map-pin, currentColor)" fill-opacity=".16"/>
+<circle cx="186.04" cy="176.55" r="3.5" fill="var(--tb-map-pin, currentColor)"/>
+<text x="194.04" y="180.55" fill="var(--tb-map-ink, currentColor)" style="font-family:inherit;font-size:18px;font-weight:500">Toronto</text>
+<text x="12" y="234" fill="var(--tb-map-ink, currentColor)" style="font-family:inherit;font-size:18px;font-weight:400">Demo site · Toronto, Ontario</text>
+</svg></template>
+<script>
+(()=>{
+const root=document.getElementById('tb-v2'),main=root.querySelector('#tb2-main'),modal=root.querySelector('#tb2-modal');
+const DAY=86400000,origin=Date.UTC(2026,9,1),today=4;
+const iso=n=>new Date(origin+n*DAY).toISOString().slice(0,10),idx=s=>Math.round((Date.parse(s+'T00:00:00Z')-origin)/DAY),date=n=>new Date(origin+n*DAY).toLocaleDateString('en-CA',{month:'short',day:'numeric',timeZone:'UTC'});
+const esc=v=>String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money=n=>new Intl.NumberFormat('en-CA',{style:'currency',currency:'CAD',maximumFractionDigits:0}).format(n);
+const state={review:'app',nav:'tasks',view:'today',project:'O-101',projectView:'timeline',level:2,collapsed:[],future:false,completed:false,quoteOpen:false,quoteId:'Q-104',productionView:'timeline',presetVariant:'Dojo|Hybrid',stockDate:16,table:'tasks',dialog:null,toast:'',generation:0,ganttStart:0};
+const design={density:'Comfortable'};
+const jobs=[{id:'F-12',type:'production',name:'Cedar siding batch',party:'Example factory',status:'In production',start:0,promise:13,site:'Toronto warehouse',model:'',frame:''},{id:'O-101',type:'order',name:'Lakeside studio',party:'Example customer A',status:'Confirmed',start:0,promise:18,site:'Toronto, ON',model:'Bunkie',frame:'Pro'},{id:'O-102',type:'order',name:'Garden office',party:'Example customer B',status:'Confirmed',start:6,promise:25,site:'Toronto, ON',model:'Dojo',frame:'Hybrid'},{id:'Q-104',type:'order',name:'New studio quote',party:'Example customer C',status:'Draft quote',start:4,promise:20,site:'Toronto, ON',model:'Dojo',frame:'Hybrid'}];
+const tasks=[
+ {id:'F-M',job:'F-12',parent:null,title:'Manufacturing',start:0,end:8,owner:'Production',group:true},
+ {id:'F-SPEC',job:'F-12',parent:'F-M',title:'Approve specifications',start:0,end:0,owner:'Production',done:true},
+ {id:'F-MID',job:'F-12',parent:'F-M',title:'Confirm factory progress',start:4,end:4,owner:'Production',done:false},
+ {id:'F-PAN',job:'F-12',parent:'F-M',title:'Produce cedar panels',start:1,end:8,owner:'Factory',done:false,status:'In progress'},
+ {id:'F-L',job:'F-12',parent:null,title:'Freight & receiving',start:3,end:13,owner:'Logistics',group:true},
+ {id:'F-BOOK',job:'F-12',parent:'F-L',title:'Book freight',start:3,end:3,owner:'Logistics',done:false},
+ {id:'F-SHIP',job:'F-12',parent:'F-L',title:'Ship to warehouse',start:9,end:11,owner:'Logistics',done:false,depends:'F-PAN'},
+ {id:'F-REC',job:'F-12',parent:'F-L',title:'Receive & release cedar stock',start:12,end:13,owner:'Warehouse',done:false,depends:'F-SHIP',receipt:true},
+ {id:'O-P',job:'O-101',parent:null,title:'Preparation',start:1,end:15,owner:'PM',group:true},
+ {id:'O-TRUCK',job:'O-101',parent:'O-P',title:'Confirm delivery truck',start:1,end:1,owner:'Logistics',done:false},
+ {id:'O-ELEC',job:'O-101',parent:'O-P',title:'Book electrician',start:4,end:4,owner:'PM',done:false},
+ {id:'O-BUY',job:'O-101',parent:'O-P',title:'Order local materials',start:7,end:7,owner:'Purchasing',done:false},
+ {id:'O-PACK',job:'O-101',parent:'O-P',title:'Pick & pack materials',start:14,end:15,owner:'Warehouse',group:true,depends:'F-REC'},
+ {id:'O-COUNT',job:'O-101',parent:'O-PACK',title:'Check component quantities',start:14,end:14,owner:'Warehouse',done:false,depends:'F-REC'},
+ {id:'O-LABEL',job:'O-101',parent:'O-PACK',title:'Label and secure pallets',start:15,end:15,owner:'Warehouse',done:false,depends:'O-COUNT'},
+ {id:'O-B',job:'O-101',parent:null,title:'Delivery & installation',start:18,end:23,owner:'PM',group:true},
+ {id:'O-DEL',job:'O-101',parent:'O-B',title:'Deliver to customer site',start:18,end:18,owner:'Logistics',done:false,depends:'O-LABEL'},
+ {id:'O-FRAME',job:'O-101',parent:'O-B',title:'Install frame & panels',start:19,end:20,owner:'Build crew',done:false,depends:'O-DEL'},
+ {id:'O-SIDE',job:'O-101',parent:'O-B',title:'Install siding',start:21,end:22,owner:'Build crew',done:false,depends:'O-FRAME'},
+ {id:'O-HAND',job:'O-101',parent:'O-B',title:'Inspect & hand over',start:23,end:23,owner:'PM',done:false,depends:'O-SIDE'},
+ {id:'B-P',job:'O-102',parent:null,title:'Preparation & delivery',start:7,end:25,owner:'PM',group:true},
+ {id:'B-BUY',job:'O-102',parent:'B-P',title:'Place local supplier order',start:7,end:7,owner:'Purchasing',done:false},
+ {id:'B-DEL',job:'O-102',parent:'B-P',title:'Deliver garden office',start:25,end:25,owner:'Logistics',done:false}
+];
+const items=[{id:'cedar',name:'Cedar siding',unit:'panels'},{id:'steel',name:'Steel siding',unit:'panels'},{id:'kit',name:'Frame / panel kit',unit:'kits'}];
+const entries=[{id:'I1',item:'steel',kind:'actual',qty:100,at:0,job:null,label:'Opening usable stock'},{id:'I2',item:'kit',kind:'actual',qty:8,at:0,job:null,label:'Opening usable stock'},{id:'I3',item:'cedar',kind:'incoming',qty:120,at:13,job:'F-12',task:'F-REC',label:'Expected usable receipt'},{id:'I4',item:'cedar',kind:'reserved',qty:12,at:16,job:'O-101',label:'Confirmed order requirement'},{id:'I5',item:'cedar',kind:'reserved',qty:24,at:23,job:'O-102',label:'Confirmed order requirement'},{id:'I6',item:'steel',kind:'reserved',qty:12,at:16,job:'O-101',label:'Confirmed order requirement'},{id:'I7',item:'kit',kind:'reserved',qty:1,at:16,job:'O-101',label:'Confirmed order requirement'},{id:'I8',item:'kit',kind:'reserved',qty:1,at:23,job:'O-102',label:'Confirmed order requirement'}];
+const presets={};[['Dojo','Hybrid',16,24000],['Dojo','Pro',20,28000],['Bunkie','Hybrid',24,33000],['Bunkie','Pro',28,38000]].forEach(([model,frame,panels,base])=>presets[model+'|'+frame]={model,frame,panels,base,cedarCost:110,cedarPrice:190,hoursPerPanel:.75,days:2,leadDays:5});
+const quote={model:'Dojo',frame:'Hybrid',build:'Installed',siding:'cedar',coverage:'Half',electrical:'Hookup to home',hvac:'Electric heat pump',foundation:'Adjustable landing pad',date:20,customer:'Example customer C',site:'Toronto, ON',override:false,overrideQty:8};
+let lastFocus=null,drag=null,suppressClick=false;
+function jobBy(id){return jobs.find(j=>j.id===id);}function taskBy(id){return tasks.find(t=>t.id===id);}function children(id){return tasks.filter(t=>t.parent===id);}function leaves(job){return tasks.filter(t=>t.job===job&&!t.group);}function depth(t){let n=1,p=t.parent;while(p){n++;p=taskBy(p)?.parent;}return n;}function leafDesc(id){return children(id).flatMap(t=>t.group?leafDesc(t.id):[t]);}
+function dates(t){if(!t.group)return [t.start,t.end];const cs=leafDesc(t.id);return cs.length?[Math.min(...cs.map(x=>x.start)),Math.max(...cs.map(x=>x.end))]:[t.start,t.end];}
+function status(t){if(t.done)return ['Complete','green'];if(t.group){const cs=leafDesc(t.id);return cs.length&&cs.every(x=>x.done)?['Complete','green']:['Group',''];}if(t.end<today)return ['Overdue','red'];if(t.end<=today+1)return ['Act now','orange'];if(t.end<=today+5)return ['Act soon','yellow'];return [t.status||'Scheduled',''];}
+const tag=(label,cls='')=>`<span class="tag ${cls}">${esc(label)}</span>`;
+function stock(item,at=state.stockDate){const actual=entries.filter(e=>e.item===item&&e.kind==='actual'&&e.at<=at).reduce((a,e)=>a+e.qty,0);const incoming=entries.filter(e=>e.item===item&&e.kind==='incoming'&&e.at<=at).reduce((a,e)=>a+e.qty,0);const reserved=entries.filter(e=>e.item===item&&e.kind==='reserved').reduce((a,e)=>a+e.qty,0);return {actual,incoming,reserved,free:Math.max(0,actual+incoming-reserved)};}
+function qcalc(){const saved=jobBy('Q-104');const p=saved.status==='Confirmed'?saved.presetSnapshot:presets[quote.model+'|'+quote.frame],factor=quote.coverage==='Full'?1:.5,qty=quote.override?quote.overrideQty:p.panels*factor,steel=quote.coverage==='Half'?p.panels/2:0,need=quote.date-2,mainPrice=quote.siding==='cedar'?qty*p.cedarPrice:0,price=p.base+(quote.build==='Installed'?11000:0)+mainPrice+(quote.electrical==='Hookup to home'?2500:0)+(quote.hvac==='Electric heat pump'?1500:0)+400;return {p,qty,steel,need,mainPrice,price,cost:qty*(quote.siding==='cedar'?p.cedarCost:55),hours:qty*p.hoursPerPanel,available:Math.max(0,stock(quote.siding,need).free-(quote.siding==='steel'?steel:0)),steelAvailable:Math.max(0,stock('steel',need).free-(quote.siding==='steel'?qty:0))};}
+function save(){try{window.openai?.setWidgetState?.({modelContent:{design:'Tinybox simplified v2',section:state.review,screen:state.nav,taskView:state.view,project:state.project},privateContent:{review:state.review,nav:state.nav,view:state.view,project:state.project,level:state.level,density:design.density}})?.catch(()=>{});}catch{}}
+function restore(s){const p=s?.privateContent;if(!p)return;for(const [k,vals] of Object.entries({review:['app','tables'],nav:['tasks','orders','production','inventory','presets'],view:['today','timeline','project']}))if(vals.includes(p[k]))state[k]=p[k];if(jobs.some(j=>j.id===p.project))state.project=p.project;if([0,1,2,3].includes(p.level))state.level=p.level;if(['Comfortable','Compact'].includes(p.density))design.density=p.density;}
+function announce(s){state.toast=s;const e=root.querySelector('#tb2-toast');e.textContent=s;e.hidden=!s;}
+function appearance(){root.querySelector('#tb2-app').classList.toggle('compact',design.density==='Compact');}
+function render(){root.querySelectorAll('[data-review]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.review===state.review)));root.querySelector('#tb2-app').hidden=state.review!=='app';root.querySelector('#tb2-tables').hidden=state.review!=='tables';root.querySelectorAll('[data-nav]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.nav===state.nav)));if(state.review==='tables')renderSchema();else{main.innerHTML=({tasks:taskPage,orders:orderPage,production:productionPage,inventory:inventoryPage,presets:presetPage})[state.nav]();}appearance();}
+function navigate(nav){state.review='app';state.nav=nav;closeDialog(false);render();save();}
+function openProject(id){state.project=id;state.view='project';state.nav='tasks';state.review='app';render();save();}
+function taskPage(){return `<div class="title"><div><h2>${state.view==='today'?'Tasks':state.view==='timeline'?'Master timeline':'Project'}</h2><p>${state.view==='today'?'All work, ordered by the next deadline.':state.view==='timeline'?'Factory production and customer delivery · day-by-day schedule':'One work record and its tasks.'}</p></div>${state.view==='today'?'<span class="tag">Same tasks across all three views</span>':''}</div><div class="viewbar"><div class="tabs" aria-label="Task views">${[['today','Today · list'],['timeline','Timeline'],['project','Project']].map(([v,l])=>`<button type="button" class="cursor-interaction" data-view="${v}" aria-pressed="${state.view===v}">${l}</button>`).join('')}</div>${state.view==='timeline'?levelControl():state.view==='today'?`<label class="check"><input type="checkbox" id="tb2-show-completed" ${state.completed?'checked':''}>Show completed</label>`:''}</div>${state.view==='today'?todayPage():state.view==='timeline'?gantt(jobs.filter(j=>j.status!=='Draft quote')):projectPage()}`;}
+function taskTable(list){return `<div class="table-wrap"><table class="task-table"><colgroup><col><col><col><col><col><col></colgroup><thead><tr><th>Status</th><th>Project / batch</th><th>Action / task</th><th>Owner</th><th>Deadline</th><th>Complete</th></tr></thead><tbody>${list.map(t=>{const [label,cls]=status(t);return `<tr><td>${tag(label,cls)}${!t.done&&t.status&&t.status!==label?'<small class="muted">'+esc(t.status)+'</small>':''}</td><td><button type="button" class="link cursor-interaction" data-project="${t.job}">${t.job}</button><small class="muted">${esc(jobBy(t.job)?.name||'')}</small></td><td><button type="button" class="plain cursor-interaction" data-edit-task="${t.id}">${esc(t.title)}</button>${t.parent?`<small class="muted">${esc(taskBy(t.parent)?.title||'')}</small>`:''}</td><td>${esc(t.owner)}</td><td>${date(t.end)}</td><td><button type="button" class="cursor-interaction" data-complete="${t.id}">${t.done?'Reopen':'✓ Done'}</button></td></tr>`;}).join('')}</tbody></table></div>`;}
+function todayPage(){const ls=tasks.filter(t=>!t.group&&!t.done).sort((a,b)=>a.end-b.end);const ranges=[['Overdue',ls.filter(t=>t.end<today)],['Today',ls.filter(t=>t.end===today)],['This week',ls.filter(t=>t.end>today&&t.end<=10)]];return ranges.map(([title,ts])=>`<div class="section-title">${title}<small>${ts.length} tasks</small></div>${ts.length?taskTable(ts):'<p class="small muted">Nothing outstanding.</p>'}`).join('')+`<button type="button" class="group-toggle cursor-interaction" data-action="toggle-future" aria-expanded="${state.future}"><span>${state.future?'▾':'▸'} Future</span><span>${ls.filter(t=>t.end>10).length} tasks · from ${date(11)}</span></button>${state.future?taskTable(ls.filter(t=>t.end>10)):''}${state.completed?'<div class="section-title">Completed</div>'+taskTable(tasks.filter(t=>!t.group&&t.done)):''}`;}
+function levelControl(){return `<label class="choice">Detail<select id="tb2-level" aria-label="Timeline detail level">${[[0,'Projects / batches'],[1,'Stages'],[2,'Tasks'],[3,'Subtasks']].map(([n,l])=>`<option value="${n}" ${state.level===n?'selected':''}>${l}</option>`).join('')}</select></label>`;}
+function visibleTasks(job){const out=[];function walk(parent){for(const t of tasks.filter(x=>x.job===job&&x.parent===parent)){if(depth(t)>state.level)continue;out.push(t);if(t.group&&!state.collapsed.includes(t.id))walk(t.id);}}walk(null);return out;}
+function gantt(jobList){let r=2;let body=`<div class="row space"><span class="small">${date(state.ganttStart)} – ${date(state.ganttStart+27)}, 2026</span><div class="tabs"><button type="button" class="cursor-interaction" data-range="-28" aria-label="Previous 28 days">← Earlier</button><button type="button" class="cursor-interaction" data-range="28" aria-label="Next 28 days">Later →</button></div></div><div class="gantt-wrap"><div class="gantt"><div class="g-label" style="grid-row:1">Work / task</div>${Array.from({length:28},(_,n)=>`<div class="g-day ${n+state.ganttStart===today?'today':''}" style="grid-row:1;grid-column:${n+2}">${new Date(origin+(n+state.ganttStart)*DAY).getUTCDate()}</div>`).join('')}`;for(const type of ['production','order']){const list=jobList.filter(j=>j.type===type);if(!list.length)continue;body+=`<div class="g-group" style="grid-row:${r++}">${type==='production'?'Factory production':'Customer delivery / installation'}</div>`;for(const j of list){const tl=leaves(j.id),start=tl.length?Math.min(...tl.map(t=>t.start)):j.start,end=tl.length?Math.max(...tl.map(t=>t.end)):j.promise;body+=ganttRow({id:j.id,title:j.name,job:j.id,start,end,jobrow:true},r++);for(const t of visibleTasks(j.id))body+=ganttRow(t,r++);}}return body+`</div></div><div class="row space"><span class="small muted">Daily scale · click a bar to edit · drag to move · right edge to resize</span><span class="small muted">Factory receipt → material availability → customer work</span></div>`;}
+function ganttRow(t,r){const [a,b]=t.jobrow?[t.start,t.end]:dates(t),start=Math.max(state.ganttStart,a)-state.ganttStart,end=Math.min(state.ganttStart+27,b)-state.ganttStart,off=end<0||start>27,st=t.jobrow?['','']:status(t),dep=t.depends?taskBy(t.depends):null,conflict=dep&&dates(dep)[1]>=a&&!dep.done;const label=t.jobrow?`<button type="button" class="link cursor-interaction" data-project="${t.id}"><strong>${t.id}</strong> · ${esc(t.title)}</button>`:`${t.group?`<button type="button" class="expand cursor-interaction" data-collapse="${t.id}" aria-label="${state.collapsed.includes(t.id)?'Expand':'Collapse'} ${esc(t.title)}">${state.collapsed.includes(t.id)?'▸':'▾'}</button>`:`<span class="g-status ${st[1]}"></span>`}<button type="button" class="plain cursor-interaction" data-edit-task="${t.id}">${esc(t.title)}</button>`;return `<div class="g-label" style="grid-row:${r};padding-left:${t.jobrow?0:(depth(t)-1)*12+8}px">${label}</div><div class="g-track" style="grid-row:${r}"></div>${off?'':`<button type="button" class="g-bar cursor-interaction ${t.jobrow?'jobbar':t.group?'parent':conflict?'red':st[1]}" style="grid-row:${r};grid-column:${start+2}/${end+3}" ${t.jobrow?`data-project="${t.id}"`:`data-edit-task="${t.id}" ${t.group?'':`data-drag-task="${t.id}"`}`} aria-label="${esc(t.title)}: ${date(a)} to ${date(b)}${conflict?', dependency conflict':''}">${t.group?'':end-start>=3?esc(t.title):end-start>=1?date(a):''}${!t.group&&!t.jobrow?'<span class="g-handle" aria-hidden="true"></span>':''}</button>`}`;}
+function projectPage(){const j=jobBy(state.project)||jobs[1];const ls=leaves(j.id),done=ls.filter(t=>t.done).length;return `<div class="viewbar"><label class="choice">Work record<select id="tb2-project-select">${jobs.filter(x=>x.status!=='Draft quote').map(x=>`<option value="${x.id}" ${x.id===j.id?'selected':''}>${x.id} · ${esc(x.name)}</option>`).join('')}</select></label><div class="tabs"><button type="button" class="cursor-interaction" data-project-view="timeline" aria-pressed="${state.projectView==='timeline'}">Timeline</button><button type="button" class="cursor-interaction" data-project-view="list" aria-pressed="${state.projectView==='list'}">Task list</button><button type="button" class="cursor-interaction" data-action="daily-update">Daily update</button></div></div><div class="project-meta"><span>Customer / factory<strong>${esc(j.party)}</strong></span><span>Site<strong>${esc(j.site)}</strong></span><span>${j.type==='production'?'Stock usable':'Promised delivery'}<strong>${date(j.promise)}</strong></span><span>Steps<strong>${done} / ${ls.length} complete</strong></span></div>${j.type==='order'?`<div class="row space"><span class="small">${j.model} · ${j.frame} · allocated materials linked to this order</span><button type="button" class="link cursor-interaction" data-open-order="${j.id}">Open order configuration →</button></div>`:''}${state.projectView==='timeline'?`<div class="row space"><span class="small muted">Expand stages to see tasks and subtasks.</span>${levelControl()}</div>${gantt([j])}`:taskTable(ls.sort((a,b)=>a.end-b.end))}`;}
+function orderPage(){if(state.quoteOpen)return quoteForm();return `<div class="title"><div><h2>Quotes & orders</h2><p>One record from draft quote to confirmed order.</p></div><button type="button" class="primary cursor-interaction" data-action="new-quote">New quote</button></div><div class="table-wrap"><table class="order-table"><thead><tr><th>Status</th><th>Quote / order</th><th>Customer</th><th>Model / frame</th><th>Delivery</th><th class="num">Price</th><th>Open</th></tr></thead><tbody>${jobs.filter(j=>j.type==='order').map(j=>`<tr><td>${tag(j.status,j.status==='Confirmed'?'green':'')}</td><td><button type="button" class="link cursor-interaction" data-open-order="${j.id}">${j.id} · ${esc(j.name)}</button></td><td>${esc(j.party)}</td><td>${j.id==='Q-104'?quote.model:j.model} · ${j.id==='Q-104'?quote.frame:j.frame}</td><td>${date(j.id==='Q-104'?quote.date:j.promise)}</td><td class="num">${money(j.id==='Q-104'?qcalc().price:j.id==='O-101'?49000:39500)}</td><td>${j.status==='Confirmed'?`<button type="button" class="link cursor-interaction" data-project="${j.id}">Project →</button>`:'Draft'}</td></tr>`).join('')}</tbody></table></div>`;}
+function select(id,value,choices,disabled=false){return `<select id="${id}" ${disabled?'disabled':''}>${choices.map(v=>`<option ${v===value?'selected':''}>${esc(v)}</option>`).join('')}</select>`;}
+function quoteForm(){const j=jobBy(state.quoteId),draft=j.id==='Q-104'&&j.status==='Draft quote',q=qcalc();if(j.id!=='Q-104')return `<div class="title"><div><button type="button" class="link cursor-interaction" data-action="orders-back">← All quotes & orders</button><h2 class="space">${j.id} · ${esc(j.name)}</h2></div>${tag('Confirmed','green')}</div><div class="header-fields"><label>Name<input value="${esc(j.party)}" readonly></label><label>Delivery date<input type="date" value="${iso(j.promise)}" readonly></label><label>Delivery site<input value="${esc(j.site)}" readonly></label></div><div class="table-wrap"><table><thead><tr><th>Option</th><th>Approved selection</th><th>Availability</th></tr></thead><tbody><tr><td>Model</td><td>${j.model}</td><td>${tag('Allocated','green')}</td></tr><tr><td>Frame</td><td>${j.frame}</td><td>${tag('Allocated','green')}</td></tr><tr><td>Siding</td><td>Cedar / steel · saved configuration</td><td>${tag('Reserved','green')}</td></tr></tbody></table></div><div class="row space"><button type="button" class="primary cursor-interaction" data-project="${j.id}">Open project tasks</button><button type="button" class="cursor-interaction" data-action="revision">Create revision</button></div>`;
+return `<div class="title"><div><button type="button" class="link cursor-interaction" data-action="orders-back">← All quotes & orders</button><h2 class="space">${j.id} · ${j.status==='Confirmed'?'Confirmed order':'New studio quote'}</h2></div><button type="button" class="primary cursor-interaction" data-action="confirm-quote" ${draft?'':'disabled'}>${draft?'Confirm order':'Confirmed'}</button></div><div class="header-fields"><label>Name<input id="tb2-q-name" value="${esc(quote.customer)}" ${draft?'':'readonly'}></label><label>Requested delivery<input id="tb2-q-date" type="date" value="${iso(quote.date)}" ${draft?'':'readonly'}></label><label>Delivery site<input id="tb2-q-site" value="${esc(quote.site)}" ${draft?'':'readonly'}></label></div><div class="split"><div><div class="table-wrap"><table class="option-table"><thead><tr><th>Option</th><th>Selection / coverage</th><th class="num">Price</th><th>Availability</th></tr></thead><tbody>
+<tr><td>Model</td><td>${select('tb2-q-model',quote.model,['Dojo','Bunkie'],!draft)}</td><td class="num">${money(q.p.base)}</td><td>${tag('Kit in stock','green')}</td></tr>
+<tr><td>Frame</td><td>${select('tb2-q-frame',quote.frame,['Hybrid','Pro'],!draft)}</td><td class="num">In base</td><td>${tag('Kit in stock','green')}</td></tr>
+<tr><td>Build type</td><td>${select('tb2-q-build',quote.build,['DIY','Installed'],!draft)}</td><td class="num">${quote.build==='Installed'?'$11,000':'Included'}</td><td>${tag(quote.build==='Installed'?'Crew to book':'No crew',quote.build==='Installed'?'yellow':'')}</td></tr>
+<tr><td>Siding</td><td><div class="choice">${select('tb2-q-siding',quote.siding==='cedar'?'Cedar':'Steel',['Cedar','Steel'],!draft)}${select('tb2-q-coverage',quote.coverage+' sides',['Half sides','Full sides'],!draft)}</div></td><td class="num">${money(q.mainPrice)}</td><td><button type="button" class="link cursor-interaction" data-action="availability">${q.available>=q.qty?tag('By '+date(q.need),'green'):tag('Shortfall','red')}</button></td></tr>
+${quote.coverage==='Half'?`<tr><td>Other sides</td><td>Steel · remaining half</td><td class="num">Included</td><td>${tag(q.steelAvailable>=q.steel?'In stock':'Shortfall',q.steelAvailable>=q.steel?'green':'red')}</td></tr>`:''}
+<tr><td>Electrical</td><td>${select('tb2-q-electrical',quote.electrical,['Extension cord','Hookup to home'],!draft)}</td><td class="num">${quote.electrical==='Hookup to home'?'$2,500':'Included'}</td><td>${tag(quote.electrical==='Hookup to home'?'Trade to book':'In stock',quote.electrical==='Hookup to home'?'yellow':'green')}</td></tr>
+<tr><td>Foundation</td><td>Adjustable landing pad</td><td class="num">$400</td><td>${tag('In stock','green')}</td></tr>
+<tr><td>HVAC</td><td>${select('tb2-q-hvac',quote.hvac,['Space heater & fan','Electric heat pump'],!draft)}</td><td class="num">${quote.hvac==='Electric heat pump'?'$1,500':'Included'}</td><td>${tag('In stock','green')}</td></tr>
+<tr><td>Shipping</td><td>Deliver to site</td><td class="num">To quote</td><td>${tag('Truck to book','yellow')}</td></tr>
+</tbody></table></div><details><summary class="cursor-interaction">Other configurator options · doors, finishes, layouts</summary><div class="fields space"><label>Frame colour<select><option>Black</option><option>White</option></select></label><label>Glazing<select><option>Dual pane</option><option>Triple pane</option></select></label><label>Interior finish<select><option>White</option><option>Pine</option></select></label><label>Interior layout<select><option>Furnish yourself</option><option>Built-in furniture</option></select></label></div><p class="small muted space">Additional catalog rows shown for layout only in this mockup.</p></details><details ${quote.override?'open':''}><summary class="cursor-interaction">Calculated quantities / custom override</summary><p class="small muted space">${quote.model} + ${quote.frame} preset · ${q.p.panels} panels for full siding</p><div class="row space"><span class="small">Selected siding: ${q.qty} panels · ${q.hours.toFixed(1)} person-hours</span><button type="button" class="link cursor-interaction" data-action="goto-preset">Edit preset →</button></div><label class="check space"><input type="checkbox" id="tb2-q-override" ${quote.override?'checked':''} ${draft?'':'disabled'}>Custom quantity override</label>${quote.override?`<label class="space">Custom panel quantity<input type="number" id="tb2-q-override-qty" min="1" value="${quote.overrideQty}"></label>`:''}</details></div><aside class="stack"><div class="panel"><h3>Pricing</h3><div class="keyvalues"><span>Model + frame</span><span>${money(q.p.base)}</span><span>Options + installation</span><span>${money(q.price-q.p.base)}</span></div><hr><div class="price">${money(q.price)}</div><p class="small muted">CAD · tax / shipping excluded</p></div><div class="panel"><h3>Delivery site</h3>${root.querySelector('#tb2-map').innerHTML}<p class="small muted">${esc(quote.site)} · demo pin</p></div></aside></div><p class="small muted space">Illustrative prices and material recipes. Drafts do not reserve inventory.</p>`;}
+function productionPage(){const j=jobs[0];return `<div class="title"><div><h2>Production</h2><p>Factory batches use the same tasks and timeline.</p></div><button type="button" class="primary cursor-interaction" data-action="new-batch">New production batch</button></div><div class="viewbar"><div class="tabs"><button type="button" class="cursor-interaction" data-production-view="timeline" aria-pressed="${state.productionView==='timeline'}">Timeline</button><button type="button" class="cursor-interaction" data-production-view="table" aria-pressed="${state.productionView==='table'}">Batch table</button></div>${levelControl()}</div><div class="project-meta"><span>F-12<strong>Cedar siding · 120 panels</strong></span><span>Usable receipt<strong>${date(taskBy('F-REC').end)}</strong></span><span>Destination<strong>Toronto warehouse</strong></span></div>${state.productionView==='timeline'?gantt(jobs.filter(j=>j.type==='production')):`<div class="table-wrap space"><table><thead><tr><th>Batch</th><th>Output</th><th>Quantity</th><th>Status</th><th>Usable date</th><th>Tasks</th></tr></thead><tbody>${jobs.filter(j=>j.type==='production').map(j=>`<tr><td>${j.id}</td><td>${esc(j.name)}</td><td>${j.qty||120}</td><td>${tag(j.status)}</td><td>${date(j.id==='F-12'?taskBy('F-REC').end:j.promise)}</td><td><button type="button" class="link cursor-interaction" data-project="${j.id}">Open tasks →</button></td></tr>`).join('')}</tbody></table></div>`}<div class="notice space">Finishing production creates no warehouse stock. Receiving usable material replaces the expected supply with actual inventory.</div>`;}
+function inventoryPage(){return `<div class="title"><div><h2>Inventory</h2><p>Actual stock + dated supply − confirmed commitments.</p></div><button type="button" class="primary cursor-interaction" data-complete="F-REC">Receive stock</button></div><div class="viewbar"><span class="small">Toronto warehouse · exact item variants</span><label class="choice">Available by<input type="date" id="tb2-stock-date" value="${iso(state.stockDate)}"></label></div><div class="table-wrap"><table><thead><tr><th>Item</th><th>Unit</th><th class="num">Usable now</th><th class="num">Incoming by date</th><th class="num">Committed</th><th class="num">Available by date</th></tr></thead><tbody>${items.map(i=>{const s=stock(i.id),now=stock(i.id,today);return `<tr><td>${esc(i.name)}</td><td>${i.unit}</td><td class="num">${now.actual}</td><td class="num">${s.incoming}</td><td class="num">${s.reserved}</td><td class="num">${s.free}</td></tr>`;}).join('')}</tbody></table></div><h3 class="space">Linked stock entries</h3><div class="table-wrap space"><table><thead><tr><th>Type</th><th>Work record</th><th>Item</th><th>Quantity</th><th>Date</th><th>Source</th></tr></thead><tbody>${entries.filter(e=>e.item==='cedar').sort((a,b)=>a.at-b.at).map(e=>`<tr><td>${tag(e.kind==='incoming'?'Expected receipt':e.kind==='reserved'?'Reservation':'Actual movement',e.kind==='actual'?'green':'')}</td><td><button type="button" class="link cursor-interaction" data-project="${e.job}">${e.job}</button></td><td>Cedar siding</td><td>${e.qty}</td><td>${date(e.at)}</td><td>${e.task?`<button type="button" class="link cursor-interaction" data-edit-task="${e.task}">${esc(e.label)}</button>`:esc(e.label)}</td></tr>`).join('')}</tbody></table></div><p class="small muted space">Existing commitments remain protected. Receipts reduce the expected balance; issues clear the corresponding reservation.</p>`;}
+function presetPage(){const p=presets[state.presetVariant];return `<div class="title"><div><h2>Presets</h2><p>Option → materials + tasks + timing + cost. Used when work is created.</p></div><label>Model / frame<select id="tb2-preset-variant">${Object.keys(presets).map(k=>`<option value="${k}" ${k===state.presetVariant?'selected':''}>${k.replace('|',' · ')}</option>`).join('')}</select></label></div><div class="table-wrap"><table class="preset-table"><thead><tr><th>Option / coverage</th><th>Materials</th><th>Tasks created</th><th>Timing</th><th>Labour</th><th class="num">Cost</th><th class="num">Price</th><th>Edit</th></tr></thead><tbody><tr><td>Base · ${p.model} / ${p.frame}</td><td>Frame + panel kit × 1</td><td>Prepare, deliver, assemble</td><td>From delivery date</td><td>40 h</td><td class="num">Demo</td><td class="num">${money(p.base)}</td><td>—</td></tr>${[.5,1].map(f=>`<tr><td>Cedar · ${f===.5?'half':'full'} sides</td><td>${p.panels*f} cedar panels</td><td>Pick siding → install → inspect</td><td>Pick ${p.leadDays}d before build<br>Install ${p.days}d</td><td>${(p.panels*f*p.hoursPerPanel).toFixed(1)} h</td><td class="num">${money(p.panels*f*p.cedarCost)}</td><td class="num">${money(p.panels*f*p.cedarPrice)}</td><td><button type="button" class="link cursor-interaction" data-action="edit-preset">Edit</button></td></tr>`).join('')}<tr><td>Electrical · hookup</td><td>Electrical package × 1</td><td>Book electrician → install → check</td><td>Book 10d before build</td><td>6 h</td><td class="num">$1,500</td><td class="num">$2,500</td><td>—</td></tr><tr><td>Production · cedar</td><td>Output: chosen batch quantity</td><td>Produce → ship → receive</td><td>Default offsets from start</td><td>Factory estimate</td><td class="num">Per batch</td><td class="num">—</td><td><button type="button" class="link cursor-interaction" data-action="new-batch">Open form</button></td></tr></tbody></table></div><div class="notice space">Half/full coverage is entered on the quote. Exact component quantities come from this table. Custom overrides remain optional.</div><p class="small muted space">All four model/frame combinations are shown for review. Recipes and compatibility need validation. Existing confirmed work retains its preset version.</p>`;}
+function renderSchema(){const data=[['work','Work','Customer quotes/orders and factory batches','ID, type, customer/factory, status, site, requested/promised dates','Groups selections, tasks and stock entries'],['selections','Selections','Options chosen for each order; batch outputs','Work ID, option, model/frame preset, coverage, override, saved price','Uses Presets; produces material demand or supply'],['presets','Presets','What each option needs and creates','Model/frame, option, coverage, item quantities, task templates, offsets, hours, cost, price','Feeds selections and task generation'],['tasks','Tasks','Every action, stage and subtask','Work ID, parent task, action, owner, start/end, dependency, status, completion note','Today / Timeline / Project are views of this table'],['items','Items','Exact inventory variants','SKU, name, colour/size, unit, location','Referenced by preset recipes and stock entries'],['stock','Stock entries','Expected, committed and actual quantities','Item, work, task, type, quantity, date, source/replaces ID','Calculates current stock and future availability']];root.querySelector('#tb2-tables').innerHTML=`<div class="title"><div><h2>Six core tables</h2><p>Work is an order or a production batch. A project is its detailed task view.</p></div></div><div class="schema-flow"><span>Presets → selections + tasks</span><span>Confirmed orders → reserved stock</span><span>Production → expected supply → received stock</span></div><div class="table-wrap"><table class="schema-table"><thead><tr><th>Table</th><th>Contains</th><th>Key fields</th><th>Connection</th></tr></thead><tbody>${data.map(([id,name,desc,fields,link])=>`<tr><td><button type="button" class="link cursor-interaction" data-table="${id}">${name}</button></td><td>${desc}</td><td>${fields}</td><td>${link}</td></tr>`).join('')}</tbody></table></div><div class="schema-nav">${data.map(([id,name])=>`<button type="button" class="cursor-interaction" data-table="${id}" aria-pressed="${state.table===id}">${name} rows</button>`).join('')}</div><div id="tb2-schema-sample">${schemaSample()}</div><p class="small muted space">Logical tables shown for review. User access, attachments and audit history support these records; they do not create separate workflows.</p>`;}
+function schemaSample(){let heads,rows;if(state.table==='tasks'){heads=['Task ID','Work ID','Parent task','Action','Start','End'];rows=tasks.slice(8,15).map(t=>[t.id,t.job,t.parent||'—',t.title,date(t.start),date(t.end)]);}else if(state.table==='work'){heads=['Work ID','Type','Name','Status','Target date'];rows=jobs.map(j=>[j.id,j.type,j.name,j.status,date(j.promise)]);}else if(state.table==='selections'){const q=qcalc();heads=['Work ID','Option','Choice','Coverage','Generated requirement'];rows=[['Q-104','Model',quote.model,'—','Frame/panel kit × 1'],['Q-104','Frame',quote.frame,'—',quote.model+' / '+quote.frame],['Q-104','Siding',quote.siding,quote.coverage+' sides',q.qty+' panels'],['F-12','Batch output','Cedar panels','120 units','+120 expected stock']];}else if(state.table==='presets'){heads=['Model / frame','Siding coverage','Materials','Labour','Tasks'];rows=Object.values(presets).map(p=>[p.model+' / '+p.frame,'Half sides',p.panels/2+' cedar panels',(p.panels/2*p.hoursPerPanel).toFixed(1)+' h','Pick → install → inspect']);}else if(state.table==='items'){heads=['SKU','Item','Unit','Location'];rows=items.map(i=>[i.id,i.name,i.unit,'Toronto warehouse']);}else{heads=['Entry','Item','Work','Type','Qty','Date'];rows=entries.filter(e=>e.item==='cedar').map(e=>[e.id,e.item,e.job,e.kind,e.qty,date(e.at)]);}return `<div class="table-wrap"><table><thead><tr>${heads.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map(v=>`<td>${esc(v)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;}
+function openDialog(kind,id,extra={}){lastFocus=document.activeElement;state.dialog={kind,id,...extra};let title='',sub='',body='',confirm='Save';const t=taskBy(id),j=t?jobBy(t.job):null;
+if(kind==='complete'){title=t.done?'Reopen task?':t.receipt?'Receive usable stock':'Complete task?';sub=t.job+' · '+t.title;confirm=t.done?'Reopen':t.receipt?'Record receipt':'Confirm complete';const incoming=entries.find(e=>e.task===t.id&&e.kind==='incoming');body=`${t.receipt&&!t.done?`<div class="fields"><label>Usable quantity received<input id="tb2-receive-qty" type="number" min="1" max="${incoming?.qty||0}" value="${incoming?.qty||0}"></label><label>Receipt date<input id="tb2-receive-date" type="date" value="${iso(today)}"></label></div><p class="small muted space">Outstanding: ${incoming?.qty||0} cedar panels. Partial receipt leaves the remainder expected.</p>`:''}<label class="space">Comment (optional)<textarea id="tb2-comment" placeholder="Add a note about what was completed…"></textarea></label><p class="small muted space">Completed by Demo user · recorded in task history.</p>`;}
+if(kind==='edit'){title=t.title;sub=t.job+' · '+(t.parent?taskBy(t.parent)?.title:'Top-level stage');const ds=dates(t);confirm=t.group?'Close':'Save task';body=`<div class="fields"><label>Start<input id="tb2-edit-start" type="date" value="${iso(extra.start??ds[0])}" ${t.group?'readonly':''}></label><label>End / deadline<input id="tb2-edit-end" type="date" value="${iso(extra.end??ds[1])}" ${t.group?'readonly':''}></label><label>Owner<input id="tb2-edit-owner" value="${esc(t.owner)}" ${t.group?'readonly':''}></label><label>Status<select id="tb2-edit-status" ${t.group||t.done?'disabled':''}><option>${t.done?'Complete':t.status||'Not started'}</option><option>In progress</option><option>Blocked</option></select></label><label class="full">Completion / progress note<textarea id="tb2-comment">${esc(t.comment||'')}</textarea></label></div>${t.group?'<p class="small muted space">Stage dates roll up from its child tasks.</p>':t.depends?`<p class="small muted space">Depends on: ${esc(taskBy(t.depends)?.title||t.depends)}.</p>`:''}${t.receipt?'<div class="notice space">Changing this end date also moves the expected stock-availability date. Customer promises remain unchanged.</div>':''}<div id="tb2-edit-impact" class="space small" aria-live="polite">${extra.start!==undefined?'Moved on timeline. Review dates before saving. ':''}${t.receipt&&entries.some(e=>e.item==='cedar'&&e.kind==='reserved'&&e.at<(extra.end??ds[1]))?'This receipt would arrive after a customer material need date. Customer promises remain unchanged.':''}</div>`;}
+if(kind==='quote-confirm'){const q=qcalc(),short=q.available<q.qty||q.steelAvailable<q.steel;title=short?'Resolve material shortfall':'Confirm this order?';sub='Q-104 · '+quote.customer;confirm=short?'Return to quote':'Confirm order';body=`<div class="keyvalues space"><span>Requested delivery</span><span>${date(quote.date)}</span><span>Materials needed</span><span>${date(q.need)}</span><span>Price before tax / shipping</span><span>${money(q.price)}</span></div><hr><p class="small">${short?'The chosen materials cannot cover this date. Adjust the date or configuration.':`Reserve ${q.qty} ${quote.siding} panels${q.steel?' + '+q.steel+' steel panels':''}, save this preset version and generate preparation/build tasks. Trade and transport bookings remain tasks to complete.`}</p>`;state.dialog.short=short;}
+if(kind==='preset'){const p=presets[state.presetVariant];title='Edit siding preset';sub=p.model+' · '+p.frame+' · Cedar';confirm='Save preset';body=`<div class="fields"><label>Panels for full sides<input id="tb2-p-panels" type="number" min="1" value="${p.panels}"></label><label>Half-side quantity<input value="Full quantity ÷ 2" readonly></label><label>Cost per panel (CAD)<input id="tb2-p-cost" type="number" min="0" value="${p.cedarCost}"></label><label>Price per panel (CAD)<input id="tb2-p-price" type="number" min="0" value="${p.cedarPrice}"></label><label>Person-hours per panel<input id="tb2-p-hours" type="number" min="0" step="0.25" value="${p.hoursPerPanel}"></label><label>Install duration (days)<input id="tb2-p-days" type="number" min="1" value="${p.days}"></label><label>Pick materials before build (days)<input id="tb2-p-lead" type="number" min="0" value="${p.leadDays}"></label><label>Trade / crew<input value="Siding installer" readonly></label></div><p class="small muted space">Task template: Pick siding → Install siding → Inspect finish. Applies to new/draft work; confirmed orders keep their saved version.</p>`;}
+if(kind==='batch'){title='New production batch';sub='Creates tasks and expected incoming inventory';confirm='Create sample batch';body=`<div class="fields"><label>Factory<input id="tb2-b-factory" value="Example factory"></label><label>Output item<select><option>Cedar siding</option></select></label><label>Quantity (panels)<input id="tb2-b-qty" type="number" min="1" value="60"></label><label>Production starts<input id="tb2-b-start" type="date" value="2026-10-08"></label><label>Production duration (days)<input id="tb2-b-prod" type="number" min="1" value="9"></label><label>Transit duration (days)<input id="tb2-b-transit" type="number" min="1" value="3"></label><label>Receiving / inspection (days)<input id="tb2-b-receive" type="number" min="1" value="2"></label><label>Destination<input value="Toronto warehouse" readonly></label></div><p class="small muted space">Preset durations generate the first timeline; its task dates can then be edited individually.</p>`;}
+if(kind==='daily'){title='Daily update';sub=state.project+' · '+jobBy(state.project).name;confirm='Save daily update';body=`<div class="fields"><label class="full">Task<select id="tb2-d-task">${leaves(state.project).filter(t=>!t.done).map(t=>`<option value="${t.id}">${esc(t.title)}</option>`).join('')}</select></label><label>Physical progress (%)<input id="tb2-d-progress" type="number" min="0" max="100" value="25"></label><label>Hours used today<input id="tb2-d-hours" type="number" min="0" value="2"></label><label>Hours remaining<input id="tb2-d-remaining" type="number" min="0" value="6"></label><label>Expected finish<input id="tb2-d-end" type="date" value="${iso(today+1)}"></label><label class="full">Blocker / next action<textarea id="tb2-comment" placeholder="Optional update"></textarea></label></div><p class="small muted space">Updates this task in every view. Hours spent and physical completion remain separate.</p>`;}
+modal.innerHTML=`<div class="dialog" role="dialog" aria-modal="true" aria-labelledby="tb2-dialog-title"><h3 id="tb2-dialog-title">${esc(title)}</h3><p class="small muted">${esc(sub)}</p>${body}<p id="tb2-dialog-error" class="small space" role="alert"></p><div class="actions"><button type="button" class="cursor-interaction" data-action="close-dialog">Cancel</button><button type="button" class="primary cursor-interaction" data-action="save-dialog">${confirm}</button></div></div>`;modal.hidden=false;modal.querySelector('input:not([readonly]),textarea,select,button')?.focus();}
+function closeDialog(focus=true){modal.hidden=true;modal.innerHTML='';state.dialog=null;if(focus&&lastFocus?.isConnected)lastFocus.focus();}
+function error(s){modal.querySelector('#tb2-dialog-error').textContent=s;}
+function val(id){return modal.querySelector('#'+id)?.value||'';}function num(id){return Number(val(id));}
+function saveDialog(){const d=state.dialog;if(!d)return;const t=taskBy(d.id);let msg='';
+if(d.kind==='complete'){if(t.done&&t.receipt){error('A posted receipt needs a stock correction, not reopening the receipt task.');return;}if(t.receipt&&!t.done){const e=entries.find(e=>e.task===t.id&&e.kind==='incoming'),qty=num('tb2-receive-qty'),at=idx(val('tb2-receive-date'));if(!e||qty<=0||qty>e.qty||!Number.isFinite(at)){error('Enter a valid date and quantity within the outstanding balance.');return;}entries.push({id:'R'+Date.now(),item:'cedar',kind:'actual',qty,at,job:t.job,task:t.id,label:'Usable receipt'});e.qty-=qty;if(e.qty===0){entries.splice(entries.indexOf(e),1);t.done=true;}else t.status='In progress';msg=`${qty} panels received. ${e.qty} remain expected.`;}else{t.done=!t.done;msg=t.done?'Task completed in every view.':'Task reopened in every view.';}t.comment=val('tb2-comment');t.completedBy=t.done?'Demo user':null;}
+if(d.kind==='edit'){if(!t.group){const a=idx(val('tb2-edit-start')),b=idx(val('tb2-edit-end'));if(!Number.isFinite(a)||!Number.isFinite(b)||b<a){error('End date must be on or after the start.');return;}t.start=a;t.end=b;t.owner=val('tb2-edit-owner');t.status=val('tb2-edit-status');t.comment=val('tb2-comment');if(t.receipt){const e=entries.find(e=>e.task===t.id&&e.kind==='incoming');if(e)e.at=b;jobBy(t.job).promise=b;}const affected=t.receipt?entries.filter(e=>e.item==='cedar'&&e.kind==='reserved'&&e.at<b).map(e=>e.job):[];msg=affected.length?'Supply delayed past the need date for '+[...new Set(affected)].join(', ')+'. Customer promises unchanged.':'Task dates updated across all views.';}}
+if(d.kind==='quote-confirm'){if(d.short){closeDialog();return;}const j=jobBy('Q-104');if(j.status==='Confirmed'){closeDialog();return;}const q=qcalc();j.status='Confirmed';j.promise=quote.date;j.model=quote.model;j.frame=quote.frame;j.party=quote.customer;j.site=quote.site;j.price=q.price;j.presetSnapshot={...q.p};entries.push({id:'Q-C',item:quote.siding,kind:'reserved',qty:q.qty,at:q.need,job:j.id,label:'Confirmed selection'});if(q.steel)entries.push({id:'Q-S',item:'steel',kind:'reserved',qty:q.steel,at:q.need,job:j.id,label:'Remaining siding'});entries.push({id:'Q-K',item:'kit',kind:'reserved',qty:1,at:q.need,job:j.id,label:'Model/frame requirement'});const prefix='Q104';tasks.push({id:prefix+'-P',job:j.id,parent:null,title:'Preparation & build',start:quote.date-7,end:quote.date+3,owner:'PM',group:true},{id:prefix+'-PICK',job:j.id,parent:prefix+'-P',title:'Pick selected siding',start:quote.date-q.p.leadDays,end:q.need,owner:'Warehouse',done:false},{id:prefix+'-DEL',job:j.id,parent:prefix+'-P',title:'Deliver customer order',start:quote.date,end:quote.date,owner:'Logistics',done:false},{id:prefix+'-INSTALL',job:j.id,parent:prefix+'-P',title:quote.build==='DIY'?'Issue customer instructions':'Install selected siding',start:quote.date+1,end:quote.date+q.p.days,owner:quote.build==='DIY'?'PM':'Build crew',done:false});if(quote.build==='Installed'){if(quote.electrical==='Hookup to home')tasks.push({id:prefix+'-ELEC',job:j.id,parent:prefix+'-P',title:'Book electrician for selected hookup',start:quote.date-10,end:quote.date-10,owner:'PM',done:false});if(quote.hvac==='Electric heat pump')tasks.push({id:prefix+'-HVAC',job:j.id,parent:prefix+'-P',title:'Book heat pump installer',start:quote.date-8,end:quote.date-8,owner:'PM',done:false});tasks.push({id:prefix+'-SITE',job:j.id,parent:prefix+'-P',title:'Confirm site and foundation readiness',start:quote.date-5,end:quote.date-5,owner:'PM',done:false});}tasks.push({id:prefix+'-TRUCK',job:j.id,parent:prefix+'-P',title:'Book delivery truck',start:quote.date-7,end:quote.date-7,owner:'Logistics',done:false});msg='Sample order confirmed: option-based tasks and material reservations created once.';}
+if(d.kind==='preset'){const p=presets[state.presetVariant];const fields={panels:num('tb2-p-panels'),cedarCost:num('tb2-p-cost'),cedarPrice:num('tb2-p-price'),hoursPerPanel:num('tb2-p-hours'),days:num('tb2-p-days'),leadDays:num('tb2-p-lead')};if(Object.values(fields).some(n=>!Number.isFinite(n)||n<0)||fields.panels<1||fields.days<1){error('Enter valid positive quantities and durations.');return;}Object.assign(p,fields);msg='Preset updated for draft/new work. Confirmed work keeps its saved version.';}
+if(d.kind==='batch'){const qty=num('tb2-b-qty'),start=idx(val('tb2-b-start')),prod=num('tb2-b-prod'),transit=num('tb2-b-transit'),rec=num('tb2-b-receive');if(!Number.isFinite(start)||[qty,prod,transit,rec].some(n=>!Number.isInteger(n)||n<1)){error('Use a valid start date and positive whole quantities/durations.');return;}const id='F-'+(13+state.generation++),end=start+prod+transit+rec-1; jobs.push({id,type:'production',name:'Cedar siding batch',party:val('tb2-b-factory'),status:'Planned',start,promise:end,site:'Toronto warehouse',qty});tasks.push({id:id+'-G',job:id,parent:null,title:'Production & receiving',start,end,owner:'Production',group:true},{id:id+'-P',job:id,parent:id+'-G',title:'Produce cedar panels',start,end:start+prod-1,owner:'Factory',done:false},{id:id+'-S',job:id,parent:id+'-G',title:'Ship to warehouse',start:start+prod,end:start+prod+transit-1,owner:'Logistics',done:false,depends:id+'-P'},{id:id+'-R',job:id,parent:id+'-G',title:'Receive usable cedar stock',start:end-rec+1,end,owner:'Warehouse',done:false,receipt:true,depends:id+'-S'});entries.push({id:id+'-IN',item:'cedar',kind:'incoming',qty,at:end,job:id,task:id+'-R',label:'Expected usable receipt'});state.nav='production';msg='Sample batch created with a default task timeline and expected supply.';}
+if(d.kind==='daily'){const dt=taskBy(val('tb2-d-task')),end=idx(val('tb2-d-end')),progress=num('tb2-d-progress'),hours=num('tb2-d-hours'),remaining=num('tb2-d-remaining');if(!dt||!Number.isFinite(end)||end<dt.start||progress<0||progress>100||hours<0||remaining<0){error('Check the task, finish date, progress and hours.');return;}dt.progress=progress;dt.actualHours=(dt.actualHours||0)+hours;dt.remainingHours=remaining;dt.end=end;dt.status='In progress';dt.comment=val('tb2-comment');if(dt.receipt){const entry=entries.find(e=>e.task===dt.id&&e.kind==='incoming');if(entry)entry.at=end;jobBy(dt.job).promise=end;}msg='Daily update saved to the shared task. Completion is recorded separately.';}
+closeDialog(false);render();announce(msg);save();}
+root.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;if(suppressClick){suppressClick=false;return;}const ds=b.dataset;if(ds.range){state.ganttStart+=Number(ds.range);render();}if(ds.review){state.review=ds.review;render();save();}if(ds.nav)navigate(ds.nav);if(ds.view){state.view=ds.view;render();save();}if(ds.project)openProject(ds.project);if(ds.projectView){state.projectView=ds.projectView;render();}if(ds.productionView){state.productionView=ds.productionView;render();}if(ds.complete)openDialog('complete',ds.complete);if(ds.editTask)openDialog('edit',ds.editTask);if(ds.collapse){const at=state.collapsed.indexOf(ds.collapse),level=depth(taskBy(ds.collapse));if(level>=state.level){state.level=Math.min(3,level+1);if(at>=0)state.collapsed.splice(at,1);}else{at<0?state.collapsed.push(ds.collapse):state.collapsed.splice(at,1);}render();}if(ds.openOrder){state.quoteId=ds.openOrder;state.quoteOpen=true;navigate('orders');}if(ds.table){state.table=ds.table;renderSchema();}const a=ds.action;if(a==='toggle-future'){state.future=!state.future;render();}if(a==='orders-back'){state.quoteOpen=false;render();}if(a==='new-quote'){state.quoteId='Q-104';state.quoteOpen=true;render();}if(a==='confirm-quote')openDialog('quote-confirm');if(a==='close-dialog')closeDialog();if(a==='save-dialog')saveDialog();if(a==='edit-preset')openDialog('preset');if(a==='goto-preset'){state.presetVariant=quote.model+'|'+quote.frame;navigate('presets');}if(a==='new-batch')openDialog('batch');if(a==='daily-update')openDialog('daily');if(a==='availability'){state.stockDate=quote.date-2;navigate('inventory');}if(a==='revision')announce('Design behaviour: copy the approved configuration into a draft revision, then preview price, stock and task changes.');});
+root.addEventListener('change',e=>{const el=e.target,id=el.id;if(id==='tb2-level'){state.level=Number(el.value);state.collapsed=[];render();save();}if(id==='tb2-show-completed'){state.completed=el.checked;render();}if(id==='tb2-project-select'){state.project=el.value;render();save();}if(id==='tb2-stock-date'&&el.value){state.stockDate=idx(el.value);render();}if(id==='tb2-preset-variant'){state.presetVariant=el.value;render();}if(id.startsWith('tb2-q-')){const key=id.slice(6);if(key==='model'||key==='frame'||key==='build'||key==='electrical'||key==='hvac')quote[key]=el.value;else if(key==='date'&&el.value)quote.date=idx(el.value);else if(key==='name')quote.customer=el.value;else if(key==='site')quote.site=el.value;else if(key==='siding')quote.siding=el.value.toLowerCase();else if(key==='coverage')quote.coverage=el.value.split(' ')[0];else if(key==='override')quote.override=el.checked;else if(key==='override-qty')quote.overrideQty=Math.max(1,Number(el.value)||1);render();}if((id==='tb2-edit-start'||id==='tb2-edit-end')&&state.dialog?.kind==='edit'){const t=taskBy(state.dialog.id),dep=t.depends?taskBy(t.depends):null,start=idx(val('tb2-edit-start')),end=idx(val('tb2-edit-end'));let warning=dep&&dates(dep)[1]>=start?'Dependency warning: predecessor ends '+date(dates(dep)[1])+'. ':'';if(t.receipt){const affected=entries.filter(x=>x.item==='cedar'&&x.kind==='reserved'&&x.at<end).map(x=>x.job);if(affected.length)warning+='Material need dates affected: '+[...new Set(affected)].join(', ')+'.';}modal.querySelector('#tb2-edit-impact').textContent=warning;}});
+root.addEventListener('keydown',e=>{if(modal.hidden)return;if(e.key==='Escape'){e.preventDefault();closeDialog();}if(e.key==='Tab'){const els=[...modal.querySelectorAll('button,input,select,textarea')].filter(x=>!x.disabled);if(!els.length)return;const first=els[0],last=els[els.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}}});
+root.addEventListener('pointerdown',e=>{const bar=e.target.closest('[data-drag-task]');if(!bar||e.button!==0)return;const t=taskBy(bar.dataset.dragTask),grid=bar.closest('.gantt'),track=grid.querySelector('.g-track');drag={id:t.id,x:e.clientX,bar,daysize:track.getBoundingClientRect().width/28,start:t.start,end:t.end,resize:!!e.target.closest('.g-handle'),delta:0};bar.setPointerCapture?.(e.pointerId);});
+root.addEventListener('pointermove',e=>{if(!drag)return;drag.delta=Math.round((e.clientX-drag.x)/drag.daysize);if(Math.abs(e.clientX-drag.x)>5)drag.bar.style.opacity='.65';});
+root.addEventListener('pointerup',e=>{if(!drag)return;const d=drag;drag=null;d.bar.style.opacity='';if(d.delta!==0){suppressClick=true;openDialog('edit',d.id,{start:d.resize?d.start:d.start+d.delta,end:Math.max(d.resize?d.start:d.start+d.delta,d.end+d.delta)});}});
+root.addEventListener('pointercancel',()=>{if(drag)drag.bar.style.opacity='';drag=null;});
+restore(window.openai?.widgetState);render();window.addEventListener('openai:set_globals',e=>{if(e.detail?.globals?.widgetState){restore(e.detail.globals.widgetState);render();}});
+if(globalThis.Tweak){const t=new Tweak({container:root.querySelector('#tb2-app'),onChange:()=>{appearance();save();}});t.addSelect(design,'density',{label:'Table spacing',options:['Comfortable','Compact']});}
+})();
+</script>
+</div>
+
+
+<style id="codex-visualization-document-scrollbar">html,body{scrollbar-width:none!important}html::-webkit-scrollbar,body::-webkit-scrollbar{display:none!important}</style>
+
+<script src="https://unpkg.com/@floating-ui/core@1.7.3/dist/floating-ui.core.umd.min.js"></script>
+<script src="https://unpkg.com/@floating-ui/dom@1.7.4/dist/floating-ui.dom.umd.min.js"></script>
+<script>
+(() => {
+  if (window.FloatingUIDOM == null) {
+    return;
+  }
+  const { autoUpdate, computePosition, flip, offset, shift, size } =
+    window.FloatingUIDOM;
+  const tooltipPlacements = new Set(["top", "right", "bottom", "left"]);
+  const tooltipId = `codex-visualization-tooltip-${
+    window.crypto?.randomUUID?.() ?? Date.now().toString(36)
+  }`;
+  const tooltipGap = 5;
+  const hoverDelay = 700;
+  const skipDelay = 300;
+  let activeTrigger = null;
+  let pendingTrigger = null;
+  let tooltip = null;
+  let openTimeout = null;
+  let autoUpdateCleanup = null;
+  let positionRequest = 0;
+  let skipDelayUntil = 0;
+  let lastPointerWasTouch = false;
+  let pinnedByTouch = false;
+
+  const getTrigger = (event) => {
+    for (const target of event.composedPath()) {
+      if (target?.nodeType === Node.ELEMENT_NODE) {
+        const trigger = target.closest("[data-tooltip]");
+        if (trigger) return trigger;
+      }
+    }
+    return null;
+  };
+  const containsTarget = (trigger, target) =>
+    target?.nodeType != null && trigger.contains(target);
+  const getContent = (trigger) =>
+    trigger.getAttribute("data-tooltip")?.trim() ?? "";
+  const getPlacement = (trigger) => {
+    const placement = trigger.getAttribute("data-tooltip-placement");
+    return tooltipPlacements.has(placement) ? placement : "top";
+  };
+  const getTooltip = () => {
+    if (tooltip == null) {
+      tooltip = document.createElement("div");
+      tooltip.id = tooltipId;
+      tooltip.className = "tooltip";
+      tooltip.setAttribute("role", "tooltip");
+    }
+    return tooltip;
+  };
+  const setDescribedBy = (trigger, described) => {
+    const ids = new Set(
+      (trigger.getAttribute("aria-describedby") ?? "")
+        .split(/\s+/)
+        .filter(Boolean),
+    );
+    if (described) {
+      ids.add(tooltipId);
+    } else {
+      ids.delete(tooltipId);
+    }
+    if (ids.size === 0) {
+      trigger.removeAttribute("aria-describedby");
+    } else {
+      trigger.setAttribute("aria-describedby", [...ids].join(" "));
+    }
+  };
+  const clearOpenTimeout = () => {
+    if (openTimeout != null) {
+      window.clearTimeout(openTimeout);
+      openTimeout = null;
+    }
+    pendingTrigger = null;
+  };
+  const closeTooltip = (activateSkipDelay = true) => {
+    clearOpenTimeout();
+    pinnedByTouch = false;
+    positionRequest += 1;
+    autoUpdateCleanup?.();
+    autoUpdateCleanup = null;
+    if (activeTrigger == null) {
+      return;
+    }
+    setDescribedBy(activeTrigger, false);
+    activeTrigger = null;
+    tooltip?.remove();
+    if (activateSkipDelay) {
+      skipDelayUntil = Date.now() + skipDelay;
+    }
+  };
+  const updatePosition = (trigger, floating) => {
+    const request = ++positionRequest;
+    void computePosition(trigger, floating, {
+      middleware: [
+        offset(tooltipGap),
+        flip({ padding: tooltipGap }),
+        shift({ padding: tooltipGap }),
+        size({
+          padding: tooltipGap,
+          apply({ availableHeight, availableWidth, elements }) {
+            elements.floating.style.setProperty(
+              "--tooltip-available-width",
+              `${Math.max(0, availableWidth)}px`,
+            );
+            elements.floating.style.setProperty(
+              "--tooltip-available-height",
+              `${Math.max(0, availableHeight)}px`,
+            );
+          },
+        }),
+      ],
+      placement: getPlacement(trigger),
+      strategy: "fixed",
+    })
+      .then(({ x, y }) => {
+        if (activeTrigger !== trigger || request !== positionRequest) {
+          return;
+        }
+        const scale = window.devicePixelRatio || 1;
+        floating.style.transform = `translate(${Math.round(x * scale) / scale}px, ${Math.round(y * scale) / scale}px)`;
+        floating.style.visibility = "visible";
+      })
+      .catch(() => {
+        if (activeTrigger === trigger && request === positionRequest) {
+          closeTooltip(false);
+        }
+      });
+  };
+  const openTooltip = (trigger) => {
+    const content = getContent(trigger);
+    if (!trigger.isConnected || content.length === 0) {
+      return;
+    }
+    clearOpenTimeout();
+    if (activeTrigger === trigger) {
+      return;
+    }
+    closeTooltip();
+    const floating = getTooltip();
+    floating.textContent = content;
+    floating.style.visibility = "hidden";
+    floating.style.transform = "translate(0, 0)";
+    document.body.appendChild(floating);
+    activeTrigger = trigger;
+    setDescribedBy(trigger, true);
+    autoUpdateCleanup = autoUpdate(trigger, floating, () => {
+      updatePosition(trigger, floating);
+    });
+  };
+  const requestOpen = (trigger, immediate = false) => {
+    if (
+      getContent(trigger).length === 0 ||
+      activeTrigger === trigger ||
+      pendingTrigger === trigger
+    ) {
+      return;
+    }
+    clearOpenTimeout();
+    pendingTrigger = trigger;
+    const delay =
+      immediate || activeTrigger != null || Date.now() < skipDelayUntil
+        ? 0
+        : hoverDelay;
+    if (delay === 0) {
+      openTooltip(trigger);
+      return;
+    }
+    openTimeout = window.setTimeout(() => {
+      openTimeout = null;
+      pendingTrigger = null;
+      openTooltip(trigger);
+    }, delay);
+  };
+  const handlePointerOpen = (event) => {
+    if (event.pointerType === "touch") {
+      return;
+    }
+    const trigger = getTrigger(event);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    requestOpen(trigger);
+  };
+  const handlePointer = (event) => {
+    lastPointerWasTouch =
+      event.type === "pointerdown" && event.pointerType === "touch";
+  };
+  const handleTouchClick = (event) => {
+    const isTouch = event.pointerType === "touch" || lastPointerWasTouch;
+    lastPointerWasTouch = false;
+    if (!isTouch || event.detail === 0) {
+      return;
+    }
+    const trigger = getTrigger(event);
+    if (
+      trigger == null ||
+      !trigger.isConnected ||
+      getContent(trigger).length === 0 ||
+      (pinnedByTouch && activeTrigger === trigger)
+    ) {
+      if (pinnedByTouch) {
+        closeTooltip();
+      }
+      return;
+    }
+    openTooltip(trigger);
+    pinnedByTouch = activeTrigger === trigger;
+    window.setTimeout(() => {
+      if (activeTrigger === trigger && !trigger.isConnected) {
+        closeTooltip(false);
+      }
+    }, 0);
+  };
+  const handleLeave = (event) => {
+    if (pinnedByTouch) {
+      return;
+    }
+    const trigger = getTrigger(event);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const handleFocusIn = (event) => {
+    const trigger = getTrigger(event);
+    if (trigger?.matches(":focus-visible")) {
+      requestOpen(trigger, true);
+    }
+  };
+  const handleKeyDown = (event) => {
+    if (event.key === "Escape") {
+      closeTooltip();
+    }
+  };
+  const handleContextMenu = (event) => {
+    lastPointerWasTouch = false;
+    const trigger = getTrigger(event);
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const handlers = {
+    pointerover: handlePointerOpen,
+    pointerdown: handlePointer,
+    pointercancel: handlePointer,
+    click: handleTouchClick,
+    pointerout: handleLeave,
+    focusin: handleFocusIn,
+    focusout: handleLeave,
+    keydown: handleKeyDown,
+    contextmenu: handleContextMenu,
+  };
+  const roots = new Map();
+  const handledEvents = new WeakSet();
+  const handleEvent = (event) => {
+    if (handledEvents.has(event)) return;
+    handledEvents.add(event);
+    handlers[event.type](event);
+  };
+  const discoverRoots = (node) => {
+    if (node.shadowRoot) listen(node.shadowRoot);
+    for (const element of node.querySelectorAll("*")) {
+      if (element.shadowRoot) listen(element.shadowRoot);
+    }
+  };
+  const listen = (root) => {
+    if (roots.has(root)) return;
+    for (const type of Object.keys(handlers)) root.addEventListener(type, handleEvent);
+    const observer = new window.MutationObserver((records) => {
+      for (const { addedNodes } of records) {
+        for (const node of addedNodes) {
+          if (node.nodeType === Node.ELEMENT_NODE) discoverRoots(node);
+        }
+      }
+      for (const [root, cleanup] of roots) {
+        if (root.host && !root.host.isConnected) {
+          cleanup();
+          roots.delete(root);
+        }
+      }
+      if (activeTrigger && !activeTrigger.isConnected) closeTooltip(false);
+    });
+    observer.observe(root, { childList: true, subtree: true });
+    roots.set(root, () => {
+      observer.disconnect();
+      for (const type of Object.keys(handlers)) root.removeEventListener(type, handleEvent);
+    });
+    discoverRoots(root);
+  };
+  const destroy = () => {
+    closeTooltip(false);
+    lastPointerWasTouch = false;
+    for (const cleanup of roots.values()) cleanup();
+    roots.clear();
+    tooltip = null;
+  };
+
+  // Events between children of one shadow root never reach the document.
+  listen(document);
+  window.addEventListener("pagehide", destroy, { once: true });
+})();
+</script>
+<script id="codex-visualization-tabs">
+(() => {
+  const selector = '.nav[role="tablist"] [role="tab"]';
+  const disabled = ':disabled,[aria-disabled="true"]';
+  const selectTab = (selected) => {
+    const panelId = selected.getAttribute("aria-controls");
+    for (const tab of selected.closest('[role="tablist"]').querySelectorAll('[role="tab"]')) {
+      const active = tab === selected;
+      tab.classList.toggle("active", active);
+      tab.setAttribute("aria-selected", String(active));
+      const id = tab.getAttribute("aria-controls");
+      const panel = id && document.getElementById(id);
+      if (panel != null) {
+        panel.hidden = id !== panelId;
+        if (!panel.hidden && selected.id) {
+          panel.setAttribute("aria-labelledby", selected.id);
+        }
+      }
+    }
+  };
+  const interact = (event) => {
+    const tab = event.target?.closest?.(selector);
+    if (event.defaultPrevented || tab == null || tab.matches(disabled)) {
+      return;
+    }
+    if (event.type === "click") {
+      selectTab(tab);
+      return;
+    }
+    const tabs = Array.from(
+      tab.closest('[role="tablist"]').querySelectorAll('[role="tab"]'),
+    ).filter((candidate) => !candidate.matches(disabled));
+    const current = tabs.indexOf(tab);
+    let next;
+    if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+      next = (current + 1) % tabs.length;
+    } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+      next = (current + tabs.length - 1) % tabs.length;
+    } else if (event.key === "Home") {
+      next = 0;
+    } else if (event.key === "End") {
+      next = tabs.length - 1;
+    } else {
+      return;
+    }
+    event.preventDefault();
+    tabs[next].focus();
+    selectTab(tabs[next]);
+  };
+
+  for (const list of document.querySelectorAll('.nav[role="tablist"]')) {
+    const selected =
+      list.querySelector('[role="tab"][aria-selected="true"]') ??
+      list.querySelector('[role="tab"].active') ??
+      list.querySelector('[role="tab"]');
+    if (selected != null) {
+      selectTab(selected);
+    }
+  }
+  document.addEventListener("click", interact);
+  document.addEventListener("keydown", interact);
+  window.addEventListener("pagehide", () => {
+    document.removeEventListener("click", interact);
+    document.removeEventListener("keydown", interact);
+  }, { once: true });
+})();
+</script>
+<script id="codex-visualization-carousel">
+  (() => {
+    for (const root of document.querySelectorAll(".viz-carousel")) {
+      const panels = Array.from(
+        root.querySelectorAll(":scope > [data-variant]"),
+      );
+      if (panels.length === 0) {
+        continue;
+      }
+      root.setAttribute("role", "group");
+      panels.forEach((panel, index) => {
+        panel.hidden = index !== 0;
+        panel.setAttribute("role", "group");
+        if (!panel.hasAttribute("aria-label")) {
+          panel.setAttribute("aria-label", panel.dataset.variant);
+        }
+      });
+      root.dataset.activeVariant = panels[0].dataset.variant;
+      if (panels.length === 1) {
+        continue;
+      }
+
+      const controls = document.createElement("div");
+      controls.className = "viz-carousel-controls";
+      // Portable copy of the settings dropdown's legacy glyph; no 14px icon-package preset matches it.
+      // https://github.com/openai/openai/blob/master/codex/codex-apps/webview/src/icons/chevron.svg
+      controls.innerHTML = `
+      <button type="button" class="viz-carousel-previous cursor-interaction"><i data-lucide="chevron-left" aria-hidden="true"></i></button>
+      <details class="viz-carousel-picker">
+        <summary class="cursor-interaction">
+          <span class="viz-carousel-count tabular-nums"></span>
+          <span class="viz-carousel-name"></span>
+          <svg class="viz-carousel-caret" width="14" height="14" viewBox="0 0 20 21" fill="none" aria-hidden="true" focusable="false">
+            <path d="M15.2793 7.71101C15.539 7.45131 15.961 7.45131 16.2207 7.71101C16.4804 7.97071 16.4804 8.39272 16.2207 8.65242L10.4707 14.4024C10.211 14.6621 9.78902 14.6621 9.52932 14.4024L3.77932 8.65242L3.69436 8.54792C3.52385 8.28979 3.55205 7.93828 3.77932 7.71101C4.00659 7.48374 4.3581 7.45554 4.61623 7.62605L4.72073 7.71101L10 12.9903L15.2793 7.71101Z" fill="currentColor" stroke="currentColor" stroke-width="0.6" />
+          </svg>
+        </summary>
+        <div class="viz-carousel-options"></div>
+      </details>
+      <button type="button" class="viz-carousel-next cursor-interaction"><i data-lucide="chevron-right" aria-hidden="true"></i></button>`;
+      const previous = controls.querySelector(".viz-carousel-previous");
+      const next = controls.querySelector(".viz-carousel-next");
+      const picker = controls.querySelector(".viz-carousel-picker");
+      const summary = picker.querySelector("summary");
+      const count = controls.querySelector(".viz-carousel-count");
+      const name = controls.querySelector(".viz-carousel-name");
+      const options = controls.querySelector(".viz-carousel-options");
+      const status = document.createElement("span");
+      status.className = "sr-only";
+      status.setAttribute("role", "status");
+      status.setAttribute("aria-live", "polite");
+      status.setAttribute("aria-atomic", "true");
+      previous.setAttribute(
+        "aria-label",
+        root.dataset.previousLabel ?? "Previous variant",
+      );
+      next.setAttribute("aria-label", root.dataset.nextLabel ?? "Next variant");
+
+      let active = 0;
+      let mousePointerId = null;
+      let summaryPointerHandled = false;
+      summary.addEventListener("pointerdown", (event) => {
+        summaryPointerHandled =
+          event.pointerType === "mouse" && event.button === 0 && !event.ctrlKey;
+        if (!summaryPointerHandled) {
+          return;
+        }
+        event.preventDefault();
+        summary.focus({ preventScroll: true });
+        picker.open = !picker.open;
+        mousePointerId = picker.open ? event.pointerId : null;
+      });
+      summary.addEventListener("click", (event) => {
+        if (summaryPointerHandled && event.detail > 0) {
+          event.preventDefault();
+        }
+      });
+      const choices = panels.map((panel, index) => {
+        const choice = document.createElement("button");
+        choice.type = "button";
+        choice.className = "cursor-interaction";
+        choice.textContent = panel.dataset.variant;
+        choice.addEventListener("click", () => {
+          select(index);
+          summary.focus();
+        });
+        choice.addEventListener("pointerup", (event) => {
+          if (
+            picker.open &&
+            event.pointerType === "mouse" &&
+            event.button === 0 &&
+            event.pointerId === mousePointerId
+          ) {
+            choice.click();
+          }
+        });
+        options.appendChild(choice);
+        return choice;
+      });
+      const select = (index) => {
+        const changed = active !== index;
+        active = index;
+        panels.forEach((panel, position) => {
+          panel.hidden = position !== active;
+          choices[position].setAttribute(
+            "aria-current",
+            String(position === active),
+          );
+        });
+        root.dataset.activeVariant = panels[active].dataset.variant;
+        count.textContent = `${active + 1} / ${panels.length}`;
+        name.textContent = panels[active].dataset.variant;
+        picker.open = false;
+        mousePointerId = null;
+        if (changed) {
+          status.textContent = `${count.textContent}: ${name.textContent}`;
+        }
+      };
+      previous.addEventListener("click", () =>
+        select((active + panels.length - 1) % panels.length),
+      );
+      next.addEventListener("click", () =>
+        select((active + 1) % panels.length),
+      );
+      picker.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && picker.open) {
+          event.preventDefault();
+          picker.open = false;
+          mousePointerId = null;
+          summary.focus();
+          return;
+        }
+        if (event.altKey || event.ctrlKey || event.metaKey) {
+          return;
+        }
+        const index = choices.indexOf(document.activeElement);
+        let nextIndex;
+        if (event.key === "ArrowDown") {
+          nextIndex = index < 0 ? active : (index + 1) % choices.length;
+        } else if (event.key === "ArrowUp") {
+          nextIndex = index < 0 ? active : (index + choices.length - 1) % choices.length;
+        } else if (picker.open && event.key === "Home") {
+          nextIndex = 0;
+        } else if (picker.open && event.key === "End") {
+          nextIndex = choices.length - 1;
+        } else {
+          return;
+        }
+        event.preventDefault();
+        picker.open = true;
+        choices[nextIndex].focus();
+      });
+      picker.addEventListener("focusout", (event) => {
+        if (!picker.contains(event.relatedTarget)) {
+          picker.open = false;
+          mousePointerId = null;
+        }
+      });
+      const dismiss = (event) => {
+        if (!summary.contains(event.target)) {
+          mousePointerId = null;
+        }
+        if (!picker.contains(event.target)) {
+          picker.open = false;
+        }
+      };
+      const endPointerSelection = () => {
+        mousePointerId = null;
+      };
+      const sizePicker = () => {
+        root.style.setProperty(
+          "--viz-carousel-picker-height",
+          `${picker.open ? options.offsetHeight : 0}px`,
+        );
+      };
+      picker.addEventListener("toggle", sizePicker);
+      window.addEventListener("resize", sizePicker);
+      document.addEventListener("pointerdown", dismiss);
+      document.addEventListener("pointerup", endPointerSelection);
+      document.addEventListener("pointercancel", endPointerSelection);
+      window.addEventListener("blur", endPointerSelection);
+      window.addEventListener(
+        "pagehide",
+        () => {
+          document.removeEventListener("pointerdown", dismiss);
+          document.removeEventListener("pointerup", endPointerSelection);
+          document.removeEventListener("pointercancel", endPointerSelection);
+          window.removeEventListener("blur", endPointerSelection);
+          window.removeEventListener("resize", sizePicker);
+        },
+        { once: true },
+      );
+      root.append(controls, status);
+      select(0);
+    }
+  })();
+</script>
+<script id="codex-visualization-lucide" async src="https://unpkg.com/lucide@1.17.0/dist/umd/lucide.js"></script>
+<script>
+(() => {
+  const initialize = () => {
+    globalThis.lucide?.createIcons({ attrs: { width: 16, height: 16 } });
+  };
+  if (globalThis.lucide != null) {
+    initialize();
+    return;
+  }
+  document
+    .getElementById("codex-visualization-lucide")
+    ?.addEventListener("load", initialize, { once: true });
+})();
+</script>
+
+</body>
+</html>
