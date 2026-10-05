@@ -10,7 +10,7 @@ app=app.replace('Daily update','Update').replace('daily update','update').replac
 app=app.replace('<td>${esc(t.owner)}</td>', '<td>${esc(t.owner)}${peopleTags(t)}</td>')
 app=app.replace("if(ds.openOrder){state.quoteId=ds.openOrder;state.quoteOpen=true;navigate('orders');}","if(ds.openOrder)openOrder(ds.openOrder);")
 app=app.replace("if(a==='new-quote'){state.quoteId='Q-104';state.quoteOpen=true;render();}","if(a==='new-quote')openOrder('Q-104');")
-parts=['preset-rules','quote-stock','timeline-shell','people','order-edit','task-list','inventory-ledger']
+parts=['preset-rules','quote-stock','timeline-shell','people','order-edit','order-status','task-list','inventory-ledger']
 extensions='\n'.join((src/(p+'.js')).read_text() for p in parts)
 marker="root.addEventListener('click'"
 assert app.count(marker)==1
