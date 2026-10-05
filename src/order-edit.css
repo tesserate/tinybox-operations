@@ -1,1 +1,3 @@
 #tb-v2 .labour-total{font-size:28px;font-weight:650;margin-top:8px;color:var(--ink)}#tb-v2 .labour-total>span{font-size:13px;font-weight:400;color:var(--muted)}#tb-v2 .labour-breakdown{border-top:1px solid var(--line);margin-top:12px;padding-top:8px}#tb-v2 .labour-breakdown>div{display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--muted);padding:5px 0}#tb-v2 .labour-breakdown strong{white-space:nowrap;color:var(--ink);font-weight:500}
+
+#tb-v2 .v3-gantt .g-bar.jobbar.quote-draft-bar{background:var(--soft);border:1px dashed var(--muted);color:var(--muted);min-width:7px}#tb-v2 .g-job-label .tag{font-size:9px;padding:1px 4px;margin-left:4px}
