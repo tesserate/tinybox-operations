@@ -5,7 +5,12 @@ ROOT=Path(__file__).resolve().parent.parent
 src=ROOT/'src'
 base=(src/'app-base.js').read_text()
 app=base.replace('function openDialog(', 'function legacyOpenDialog(').replace('function saveDialog(', 'function legacySaveDialog(')
-parts=['preset-rules','quote-stock','timeline-shell']
+app=app.replace('presets:presetPage}', 'presets:presetPage,people:peoplePage}')
+app=app.replace('Daily update','Update').replace('daily update','update').replace('Hours used today','Hours to record')
+app=app.replace('<td>${esc(t.owner)}</td>', '<td>${esc(t.owner)}${peopleTags(t)}</td>')
+app=app.replace("if(ds.openOrder){state.quoteId=ds.openOrder;state.quoteOpen=true;navigate('orders');}","if(ds.openOrder)openOrder(ds.openOrder);")
+app=app.replace("if(a==='new-quote'){state.quoteId='Q-104';state.quoteOpen=true;render();}","if(a==='new-quote')openOrder('Q-104');")
+parts=['preset-rules','quote-stock','timeline-shell','people','order-edit']
 extensions='\n'.join((src/(p+'.js')).read_text() for p in parts)
 marker="root.addEventListener('click'"
 assert app.count(marker)==1
@@ -13,6 +18,7 @@ app=app.replace(marker,extensions+'\n'+marker,1)
 frame=(src/'frame-base.html').read_text()
 assert frame.count(base)==1
 frame=frame.replace(base,app,1)
+frame=frame.replace('</nav>', '<button type="button" data-nav="people" aria-pressed="false">People</button></nav>',1)
 css='\n'.join((src/(p+'.css')).read_text() for p in parts)
 frame=frame.replace('</body>','<style>\n'+css+'\n</style>\n</body>',1)
 frame=frame.replace('App &amp; forms','Workspace').replace('App & forms','Workspace').replace('Six core tables</button>','Data model</button>')
