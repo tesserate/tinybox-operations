@@ -1,0 +1,25 @@
+#tb-v2 .fulfillment-dialog{max-width:800px;width:calc(100vw - 48px)}
+#tb-v2 .modal-layer{position:fixed;z-index:100;padding-bottom:12px}
+#tb-v2 .dialog{overflow:auto;overscroll-behavior:contain;max-height:calc(100vh - 24px)}
+#tb-v2 .dialog .actions{position:sticky;bottom:-22px;background:var(--paper);padding:12px 0;margin-bottom:-12px;border-top:1px solid var(--line);z-index:1}
+#tb-v2 .fulfillment-table{min-width:500px;width:100%}
+#tb-v2 .fulfillment-table td{padding:9px 8px}
+#tb-v2 .fulfillment-table small{display:block;font-size:10px;color:var(--muted)}
+#tb-v2 .fulfillment-table input[type=number]{width:80px;text-align:right;padding:6px}
+#tb-v2 .fulfillment-table input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent)}
+#tb-v2 .fulfillment-review{list-style:none;padding:0;margin:20px 0}
+#tb-v2 .fulfillment-review li{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--line)}
+#tb-v2 .completion-banner{background:var(--greenbg);color:var(--green);border-radius:6px;padding:10px 12px;font-size:12px;margin:12px 0}
+#tb-v2 .completion-banner span{display:block;font-size:10px;margin-top:3px}
+#tb-v2 .task-history>div{font-size:11px;padding:8px 0;border-bottom:1px solid var(--line)}
+#tb-v2 .task-history small{display:block;color:var(--muted);margin-top:4px}
+#tb-v2 .custom-control,#tb-v2 .project-fulfillment{display:flex;gap:14px;align-items:center;margin:12px 0 20px;font-size:12px}
+#tb-v2 .custom-control input:not([type=checkbox]){max-width:450px}
+#tb-v2 .order-materials{border:1px solid var(--line);border-radius:6px;padding:12px;font-size:12px}
+#tb-v2 .order-materials summary{cursor:pointer;font-weight:600}
+#tb-v2 .order-materials summary span{font-weight:400;margin-left:8px}
+#tb-v2 .order-materials table{min-width:420px;margin-top:12px}
+#tb-v2 .order-materials td,#tb-v2 .order-materials th{font-size:11px;padding:9px 7px}
+#tb-v2 .dispatch-history{padding:8px 0;font-size:12px;border-bottom:1px solid var(--line)}
+#tb-v2 .task-edit-dialog{max-width:740px}
+@media(max-width:650px){#tb-v2 .custom-control{flex-wrap:wrap}#tb-v2 .fulfillment-dialog .actions{flex-wrap:wrap}}

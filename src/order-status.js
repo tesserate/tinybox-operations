@@ -22,7 +22,7 @@ function setOrderStage(id,stage){
    // Only unfulfilled material requirements become new reservations.
    for(const [n,r] of plan.requirements.entries()){const issued=entries.filter(e=>e.job===id&&e.item===r.itemId&&e.kind==='actual'&&e.qty<0).reduce((sum,e)=>sum-e.qty,0),qty=Math.max(0,r.qty-issued);if(qty)entries.push({id:id+'-STAGE-'+n,item:r.itemId,kind:'reserved',qty,at:config.date-2,job:id,label:'Confirmed option requirement'});}
    const titles=new Set(plan.taskTemplates.map(t=>t.title));
-   for(let n=tasks.length-1;n>=0;n--){const t=tasks[n];if(t.job===id&&!t.group&&!t.done&&!t.progress&&!t.actualHours&&t.status!=='In progress'&&!titles.has(t.title))tasks.splice(n,1);}
+   for(let n=tasks.length-1;n>=0;n--){const t=tasks[n];if(t.job===id&&!t.group&&!t.kind&&!t.done&&!t.progress&&!t.actualHours&&t.status!=='In progress'&&!titles.has(t.title))tasks.splice(n,1);}
    let parent=tasks.find(t=>t.job===id&&t.group)?.id;if(!parent){parent=id+'-ROOT';tasks.push({id:parent,job:id,parent:null,title:'Order fulfillment',owner:'PM',group:true,start:config.date-10,end:config.date});}
    plan.taskTemplates.forEach((template,n)=>{let t=tasks.find(t=>t.job===id&&!t.group&&t.title===template.title);if(t?.done||t?.progress||t?.actualHours||t?.status==='In progress')return;if(!t){t={id:id+'-STAGE-T'+n,job:id,parent,done:false,people:people.filter(p=>p.roles.includes(template.owner)).map(p=>p.id)};tasks.push(t);}Object.assign(t,{title:template.title,owner:template.owner,start:config.date+Number(template.offset||0),end:config.date+Number(template.offset||0)+Math.max(1,Number(template.days||1))-1});});
   }

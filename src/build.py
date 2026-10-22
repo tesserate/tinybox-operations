@@ -5,12 +5,13 @@ ROOT=Path(__file__).resolve().parent.parent
 src=ROOT/'src'
 base=(src/'app-base.js').read_text()
 app=base.replace('function openDialog(', 'function legacyOpenDialog(').replace('function saveDialog(', 'function legacySaveDialog(')
+app=re.sub(r"^root.addEventListener\('pointer(?:down|move|up|cancel)'[^\n]*\n",'',app,flags=re.M)
 app=app.replace('presets:presetPage}', 'presets:presetPage,people:peoplePage}')
 app=app.replace('Daily update','Update').replace('daily update','update').replace('Hours used today','Hours to record')
 app=app.replace('<td>${esc(t.owner)}</td>', '<td>${esc(t.owner)}${peopleTags(t)}</td>')
 app=app.replace("if(ds.openOrder){state.quoteId=ds.openOrder;state.quoteOpen=true;navigate('orders');}","if(ds.openOrder)openOrder(ds.openOrder);")
 app=app.replace("if(a==='new-quote'){state.quoteId='Q-104';state.quoteOpen=true;render();}","if(a==='new-quote')openOrder('Q-104');")
-parts=['preset-rules','quote-stock','timeline-shell','people','order-edit','order-status','task-list','inventory-ledger']
+parts=['preset-rules','quote-stock','timeline-shell','people','order-edit','order-status','task-list','inventory-ledger','timeline-interactions','fulfillment']
 extensions='\n'.join((src/(p+'.js')).read_text() for p in parts)
 marker="root.addEventListener('click'"
 assert app.count(marker)==1

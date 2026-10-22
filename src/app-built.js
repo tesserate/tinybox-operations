@@ -352,7 +352,6 @@ function workSaveDialog(){const d=state.dialog;if(!d)return;if(d.kind==='quote-c
 if(d.kind==='batch-meta'){const j=jobBy(d.id),batch=val('tb3-edit-batch').trim();if(!batch){error('Enter a batch/version.');return;}j.batch=batch;closeDialog(false);render();announce('Batch updated.');return;}
 const oldCount=jobs.length,batch=d.kind==='batch'?val('tb3-batch-version').trim():null;if(d.kind==='batch'&&!batch){error('Enter a batch/version.');return;}legacySaveDialog();if(d.kind==='batch'&&jobs.length>oldCount){jobs.at(-1).batch=batch;render();}}
 root.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;const ds=b.dataset;let handled=false;if(ds.depthStep){state.level=Math.max(0,Math.min(3,state.level+Number(ds.depthStep)));state.collapsed=[];state.jobCollapsed=[];handled=true;}if(ds.zoomMonths){state.months=Number(ds.zoomMonths);handled=true;}if(ds.timeStep){state.timelineOffset+=Number(ds.timeStep)*state.months;handled=true;}if(ds.jobExpand){const i=state.jobCollapsed.indexOf(ds.jobExpand);if(state.level===0){state.level=1;state.jobCollapsed=jobs.filter(j=>j.id!==ds.jobExpand).map(j=>j.id);}else if(i>=0)state.jobCollapsed.splice(i,1);else state.jobCollapsed.push(ds.jobExpand);handled=true;}if(ds.groupExpand){const t=taskBy(ds.groupExpand),i=state.collapsed.indexOf(t.id);if(depth(t)>=state.level){const oldLevel=state.level;state.collapsed=[...new Set([...state.collapsed,...tasks.filter(x=>x.group&&depth(x)===oldLevel&&x.id!==t.id).map(x=>x.id)])].filter(id=>id!==t.id);state.level=Math.min(3,depth(t)+1);}else if(i>=0)state.collapsed.splice(i,1);else state.collapsed.push(t.id);handled=true;}if(ds.backTimeline!==undefined){state.view='timeline';handled=true;}if(handled){e.stopImmediatePropagation();render();save();return;}if(ds.editBatch){e.stopImmediatePropagation();const j=jobBy(ds.editBatch);state.dialog={kind:'batch-meta',id:j.id};lastFocus=b;modal.innerHTML=`<div class="dialog" role="dialog" aria-modal="true" aria-labelledby="tb2-dialog-title"><h3 id="tb2-dialog-title">Batch / version</h3><p class="small muted">${j.id} · ${esc(j.name)}</p><label class="space">Batch<input id="tb3-edit-batch" value="${esc(j.batch||'')}"></label><p id="tb2-dialog-error" role="alert"></p><div class="actions"><button type="button" data-action="close-dialog">Cancel</button><button type="button" data-action="save-dialog" class="primary">Save batch</button></div></div>`;modal.hidden=false;modal.querySelector('.dialog').scrollIntoView({block:'center'});modal.querySelector('input').focus({preventScroll:true});}});
-root.addEventListener('pointerdown',e=>{const bar=e.target.closest('[data-drag-task]');if(!bar||e.button!==0)return;e.stopImmediatePropagation();const t=taskBy(bar.dataset.dragTask),track=bar.closest('.gantt').querySelector('.g-track');drag={id:t.id,x:e.clientX,bar,daysize:track.getBoundingClientRect().width/rangeSpec().days,start:t.start,end:t.end,resize:!!e.target.closest('.g-handle'),delta:0};bar.setPointerCapture?.(e.pointerId);});
 
 const peopleCategories=['Internal team','Contractors & trades','Transport & logistics','Factory & suppliers'];
 const people=[
@@ -396,12 +395,12 @@ state.quoteId='Q-104';state.orderEditing=false;Object.assign(quote,quoteConfigur
 function openOrder(id){const previous=jobBy(state.quoteId);if(previous?.status==='Draft quote')quoteConfigurations[previous.id]=JSON.parse(JSON.stringify(quote));state.quoteId=id;state.orderEditing=false;Object.assign(quote,quoteConfigurations[id]);state.quoteOpen=true;navigate('orders');}
 function saveOrderChanges(){const j=jobBy(state.quoteId);if(!state.orderEditing||j.status!=='Confirmed')return;
  const plan=getQuotePlan(),old=j.fullPlan,changedRecipe=JSON.stringify(plan.ruleSnapshot)!==JSON.stringify(old.ruleSnapshot);
- if(changedRecipe){if(plan.needsSetup.length){announce('Set up the selected option presets before saving a changed configuration.');return;}const short=plan.requirements.some(r=>!stockKnown(r.itemId)||stockForecast(r.itemId,quote.date-2,j.id).available<r.qty);if(short){announce('The changed configuration needs confirmed supply before it can be saved.');return;}}
+ if(changedRecipe){if(entries.some(e=>e.job===j.id&&e.fulfillment)){announce('This order has confirmed 3PL work. Finish or adjust those quantities before changing its options.');return;}if(plan.needsSetup.length){announce('Set up the selected option presets before saving a changed configuration.');return;}const short=plan.requirements.some(r=>!stockKnown(r.itemId)||stockForecast(r.itemId,quote.date-2,j.id).available<r.qty);if(short){announce('The changed configuration needs confirmed supply before it can be saved.');return;}}
  const oldDate=j.promise,delta=quote.date-oldDate;
  if(!Number.isFinite(quote.date)||!quote.customer.trim()||!quote.site.trim()){announce('Enter a name, delivery date and delivery site.');return;}
  if(changedRecipe){for(let n=entries.length-1;n>=0;n--)if(entries[n].job===j.id&&entries[n].kind==='reserved')entries.splice(n,1);plan.requirements.forEach((r,n)=>entries.push({id:j.id+'-REV-'+n,item:r.itemId,kind:'reserved',qty:r.qty,at:quote.date-2,job:j.id,label:'Updated confirmed requirement'}));
  // Completed work is retained; unstarted generated work follows the new option plan.
- const existing=tasks.filter(t=>t.job===j.id&&!t.group),titles=new Set(plan.taskTemplates.map(t=>t.title));for(let n=tasks.length-1;n>=0;n--)if(tasks[n].job===j.id&&!tasks[n].group&&!tasks[n].done&&!tasks[n].progress&&!tasks[n].actualHours&&tasks[n].status!=='In progress'&&!titles.has(tasks[n].title))tasks.splice(n,1);
+ const existing=tasks.filter(t=>t.job===j.id&&!t.group),titles=new Set(plan.taskTemplates.map(t=>t.title));for(let n=tasks.length-1;n>=0;n--)if(tasks[n].job===j.id&&!tasks[n].group&&!tasks[n].kind&&!tasks[n].done&&!tasks[n].progress&&!tasks[n].actualHours&&tasks[n].status!=='In progress'&&!titles.has(tasks[n].title))tasks.splice(n,1);
  const parent=tasks.find(t=>t.job===j.id&&t.group)?.id||null;plan.taskTemplates.forEach((template,n)=>{let t=existing.find(t=>t.title===template.title);if(t?.done)return;if(!t){t={id:j.id+'-OPT-'+n,job:j.id,parent,done:false,people:[]};tasks.push(t);}Object.assign(t,{title:template.title,owner:template.owner,start:quote.date+template.offset,end:quote.date+template.offset+template.days-1});});j.fullPlan=JSON.parse(JSON.stringify(plan));j.presetSnapshot={...presets[quote.model+'|'+quote.frame]};j.price=plan.price;
  }else if(delta){entries.filter(e=>e.job===j.id&&e.kind==='reserved').forEach(e=>e.at+=delta);tasks.filter(t=>t.job===j.id&&!t.done&&!t.group).forEach(t=>{t.start+=delta;t.end+=delta;});}
  Object.assign(j,{party:quote.customer,site:quote.site,promise:quote.date,model:quote.model,frame:quote.frame});quoteConfigurations[j.id]=JSON.parse(JSON.stringify(quote));state.orderEditing=false;render();announce('Confirmed order updated. Saved requirements and task dates stay connected.');}
@@ -436,7 +435,7 @@ function setOrderStage(id,stage){
    // Only unfulfilled material requirements become new reservations.
    for(const [n,r] of plan.requirements.entries()){const issued=entries.filter(e=>e.job===id&&e.item===r.itemId&&e.kind==='actual'&&e.qty<0).reduce((sum,e)=>sum-e.qty,0),qty=Math.max(0,r.qty-issued);if(qty)entries.push({id:id+'-STAGE-'+n,item:r.itemId,kind:'reserved',qty,at:config.date-2,job:id,label:'Confirmed option requirement'});}
    const titles=new Set(plan.taskTemplates.map(t=>t.title));
-   for(let n=tasks.length-1;n>=0;n--){const t=tasks[n];if(t.job===id&&!t.group&&!t.done&&!t.progress&&!t.actualHours&&t.status!=='In progress'&&!titles.has(t.title))tasks.splice(n,1);}
+   for(let n=tasks.length-1;n>=0;n--){const t=tasks[n];if(t.job===id&&!t.group&&!t.kind&&!t.done&&!t.progress&&!t.actualHours&&t.status!=='In progress'&&!titles.has(t.title))tasks.splice(n,1);}
    let parent=tasks.find(t=>t.job===id&&t.group)?.id;if(!parent){parent=id+'-ROOT';tasks.push({id:parent,job:id,parent:null,title:'Order fulfillment',owner:'PM',group:true,start:config.date-10,end:config.date});}
    plan.taskTemplates.forEach((template,n)=>{let t=tasks.find(t=>t.job===id&&!t.group&&t.title===template.title);if(t?.done||t?.progress||t?.actualHours||t?.status==='In progress')return;if(!t){t={id:id+'-STAGE-T'+n,job:id,parent,done:false,people:people.filter(p=>p.roles.includes(template.owner)).map(p=>p.id)};tasks.push(t);}Object.assign(t,{title:template.title,owner:template.owner,start:config.date+Number(template.offset||0),end:config.date+Number(template.offset||0)+Math.max(1,Number(template.days||1))-1});});
   }
@@ -477,13 +476,256 @@ function saveStockMovement(){const e=entries.find(e=>e.id===state.dialog?.id&&e.
 }
 root.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;if(b.hasAttribute('data-stock-history')){const id=b.dataset.stockHistory;if(state.stockHistory.has(id))state.stockHistory.delete(id);else state.stockHistory.add(id);render();}if(b.hasAttribute('data-stock-confirm'))openStockMovement(b.dataset.stockConfirm);if(b.hasAttribute('data-stock-save'))saveStockMovement();});
 
+// A single date model drives stages, tasks, batches and the stock forecast.
+function rangeSpec(){
+ const start=Date.UTC(2026,9+state.timelineOffset,1),end=Date.UTC(2026,9+state.timelineOffset+state.months,1);
+ const from=state.timelineFrom??Math.round((start-origin)/DAY),days=state.timelineDays??Math.round((end-start)/DAY);
+ state.ganttStart=from;return {from,days,to:from+days-1};
+}
+function timelineControls(){
+ const r=rangeSpec(),label=state.timelineFrom==null?new Date(origin+r.from*DAY).toLocaleDateString('en-CA',{month:'short',year:'numeric',timeZone:'UTC'})+(state.months>1?' – '+new Date(origin+r.to*DAY).toLocaleDateString('en-CA',{month:'short',year:'numeric',timeZone:'UTC'}):''):date(r.from)+' – '+date(r.to);
+ return `<div class="timeline-toolbar"><div class="range-control"><button data-time-step="-1" aria-label="Earlier time range">‹</button><strong>${label}</strong><button data-time-step="1" aria-label="Later time range">›</button></div><div class="timeline-tools"><div class="zoom-control"><button data-scale-step="-1" aria-label="Zoom in timeline">−</button>${[1,3,6].map(n=>`<button data-zoom-months="${n}" aria-pressed="${state.timelineDays==null&&state.months===n}">${n} ${n===1?'month':'months'}</button>`).join('')}<button data-scale-step="1" aria-label="Zoom out timeline">+</button></div>${levelControl()}</div></div>`;
+}
+function projectName(j){const c=j.id===state.quoteId&&state.quoteOpen?quote:quoteConfigurations[j.id];return j.type==='order'?[c?.customer||j.party,c?.site||j.site,c?.model||j.model].filter(Boolean).join(' - '):j.name;}
+function customFlag(j){return j.customAdditions?'<span class="custom-flag" title="Custom additions">Custom</span>':'';}
+function timelineBounds(list){return list.length?[Math.min(...list.map(t=>t.start)),Math.max(...list.map(t=>t.end))]:[today,today];}
+function timelineDone(t){return t.group?leafDesc(t.id).length>0&&leafDesc(t.id).every(x=>x.done):!!t.done;}
+function gantt(jobList){
+ const spec=rangeSpec();let row=3,headers='',d=0;
+ while(d<spec.days){const dt=new Date(origin+(spec.from+d)*DAY),m=dt.getUTCMonth(),begin=d;while(d<spec.days&&new Date(origin+(spec.from+d)*DAY).getUTCMonth()===m)d++;headers+=`<div class="g-month" style="grid-row:1;grid-column:${begin+2}/${d+2}">${dt.toLocaleDateString('en-CA',{month:'short',year:'numeric',timeZone:'UTC'})}</div>`;}
+ for(let n=0;n<spec.days;n++){const day=new Date(origin+(spec.from+n)*DAY).getUTCDate();if(spec.days<=40||day===1||day===8||day===15||day===22)headers+=`<div class="g-day ${spec.from+n===today?'today':''}" style="grid-row:2;grid-column:${n+2}">${day}</div>`;}
+ let html=`${timelineControls()}<div class="gantt-wrap" tabindex="0" aria-label="Timeline. Scroll horizontally to move dates, pinch or Control plus wheel to zoom."><div class="gantt v3-gantt calm-timeline" style="--days:${spec.days};--gridstep:${100*(spec.days<50?1:7)/spec.days}%;grid-template-columns:260px repeat(${spec.days},minmax(0,1fr))"><div class="g-label g-heading" style="grid-row:1/3">Project / task</div>${headers}`;
+ for(const type of ['production','order']){
+  const list=jobList.filter(j=>j.type===type);if(!list.length)continue;
+  html+=`<div class="g-group type-heading ${type}" style="grid-row:${row++}">${type==='production'?'Factory production':'Customer delivery / installation'}</div>`;
+  const groups=type==='production'?[...new Set(list.map(j=>j.batch||'Unassigned'))]:['orders'];
+  for(const group of groups){
+   const members=type==='production'?list.filter(j=>(j.batch||'Unassigned')===group):list;
+   if(type==='production'){const all=jobs.filter(j=>j.type==='production'&&(j.batch||'Unassigned')===group).flatMap(j=>leaves(j.id)),[start,end]=timelineBounds(all);html+=ganttRow({id:group,title:group,batchrow:true,start,end},row++);}
+   for(const j of members){
+    const ls=j.status==='Draft quote'?[]:leaves(j.id),[start,end]=ls.length?timelineBounds(ls):[quoteConfigurations[j.id]?.date??j.promise,quoteConfigurations[j.id]?.date??j.promise];
+    html+=ganttRow({id:j.id,title:projectName(j),job:j.id,start,end,jobrow:true},row++);
+    if(j.status!=='Draft quote')for(const t of visibleTasks(j.id))html+=ganttRow(t,row++);
+   }
+  }
+ }
+ return html+`</div></div><div class="gantt-foot"><span>✓ Completed · stage bars span all subtasks</span><span>Drag to move · edges to resize · scroll sideways · pinch to zoom</span></div>`;
+}
+function ganttRow(t,row){
+ const r=rangeSpec(),[a,b]=t.jobrow||t.batchrow?[t.start,t.end]:dates(t),l=Math.max(r.from,a)-r.from,h=Math.min(r.to,b)-r.from,off=b<r.from||a>r.to;
+ const j=jobBy(t.job),draft=t.jobrow&&j.status==='Draft quote',completed=t.jobrow?leaves(j.id).length>0&&leaves(j.id).every(x=>x.done):t.batchrow?false:timelineDone(t);
+ const dep=t.depends?taskBy(t.depends):null,conflict=dep&&dates(dep)[1]>=a&&!dep.done,jobLink=state.nav==='orders'?'data-open-order':'data-project';
+ const expandable=(t.jobrow&&!draft)||t.group,collapsed=t.jobrow?state.jobCollapsed.includes(t.id)||state.level===0:state.collapsed.includes(t.id)||depth(t)>=state.level;
+ const toggle=expandable?`<button class="tree-toggle" ${t.jobrow?`data-job-expand="${t.id}"`:`data-group-expand="${t.id}"`} aria-expanded="${!collapsed}" aria-label="${collapsed?'Expand':'Collapse'} ${esc(t.title)}">${collapsed?'+':'−'}</button>`:`<span class="timeline-check" aria-label="${completed?'Completed':'Scheduled'}">${completed?'✓':'·'}</span>`;
+ const action=t.batchrow?`data-move-batch="${esc(t.id)}"`:t.jobrow?`${jobLink}="${t.id}"`:`data-edit-task="${t.id}"`;
+ const key=t.batchrow?'batch:'+t.id:t.jobrow?'job:'+t.id:'task:'+t.id;
+ const rowClass=t.batchrow?'g-batch-row':t.jobrow?'g-job-label':t.group?'g-stage-row':'g-task-row';
+ const label=`${t.batchrow?'':toggle}<button class="plain ${t.jobrow?'job-name':''}" ${action}>${t.jobrow?`<small>${t.id} ${customFlag(j)}</small>`:''}${esc(t.title)}${t.batchrow?' <small>Move batch ↔</small>':''}${draft?' <span class="tag">Quote</span>':''}${completed?' <span class="completion-label">✓</span>':''}</button>`;
+ const dragAttr=t.batchrow?`data-timeline-drag="batch" data-drag-id="${esc(t.id)}"`:!t.jobrow&&!t.group?`data-timeline-drag="task" data-drag-id="${t.id}" data-drag-task="${t.id}"`:'';
+ return `<div class="g-label ${rowClass}" style="grid-row:${row};padding-left:${t.jobrow||t.batchrow?10:(depth(t)-1)*14+12}px">${label}</div><div class="g-track ${rowClass}" style="grid-row:${row}"></div>${off?`<div class="outside-range" style="grid-row:${row};grid-column:2/-1">${date(a)}–${date(b)} · outside view</div>`:`<button class="g-bar ${t.batchrow?'batchbar':t.jobrow?'jobbar'+(draft?' quote-draft-bar':''):t.group?'parent':'taskbar'} ${completed?'is-completed':''}" style="grid-row:${row};grid-column:${l+2}/${h+3}" ${action} ${dragAttr} data-timeline-info="${esc(key)}" aria-label="${esc(t.title)}, ${date(a)} to ${date(b)}${completed?', Completed':''}${conflict?', predecessor overlaps':''}">${!t.group&&!t.jobrow&&!t.batchrow&&specTextFits(h-l,r.days)?esc(t.title):''}${completed?'<span class="bar-check">✓</span>':''}${!t.jobrow&&!t.group&&!t.batchrow?'<span class="resize-edge left" data-resize="start" aria-hidden="true"></span><span class="resize-edge right" data-resize="end" aria-hidden="true"></span>':''}</button>`}`;
+}
+function specTextFits(span,days){return span/days>.14;}
+function shiftTimeline(days){const r=rangeSpec();state.timelineFrom=r.from+days;state.timelineDays=r.days;render();}
+function zoomTimeline(factor,anchor=.5){const r=rangeSpec(),days=Math.max(7,Math.min(366,Math.round(r.days*factor)));state.timelineFrom=Math.round(r.from+r.days*anchor-days*anchor);state.timelineDays=days;render();}
+function timelineAnchor(e,wrap){const rect=wrap.querySelector('.g-track').getBoundingClientRect();return Math.max(0,Math.min(1,(e.clientX-rect.left)/rect.width));}
+let moveGesture=null,pinchGesture=null,timelineTip=null,wheelRemainder=0,skipTimelineClick=false;
+function hideTimelineTip(){timelineTip?.remove();timelineTip=null;}
+function showTimelineTip(el){
+ hideTimelineTip();const [kind,...rest]=el.dataset.timelineInfo.split(':'),id=rest.join(':');let title,span,owner,notes,done;
+ if(kind==='task'){const t=taskBy(id);title=t.title;span=dates(t);owner=taskOwners(t).map(p=>p.name).join(', ')||t.owner;notes=t.comment||(t.group?'Dates follow all subtasks.':t.depends?'After '+taskBy(t.depends)?.title:'No notes yet.');done=timelineDone(t);}
+ else if(kind==='job'){const j=jobBy(id);title=projectName(j);span=timelineBounds(leaves(id));owner=j.party;notes=j.customAdditions?'Custom additions: '+(j.customNotes||'See order details'):'Open project for all tasks.';}
+ else{const members=jobs.filter(j=>j.type==='production'&&(j.batch||'Unassigned')===id);title='Batch '+id;span=timelineBounds(members.flatMap(j=>leaves(j.id)));owner=[...new Set(members.map(j=>j.party))].join(', ');notes='Moving this batch shifts all its tasks and expected arrivals together.';}
+ timelineTip=document.createElement('div');timelineTip.className='timeline-tooltip';timelineTip.setAttribute('role','tooltip');timelineTip.innerHTML=`<strong>${esc(title)}</strong><span>${date(span[0])} – ${date(span[1])}${done?' · ✓ Completed':''}</span><span>${esc(owner)}</span><p>${esc(notes)}</p>`;root.appendChild(timelineTip);
+ const rect=el.getBoundingClientRect(),tip=timelineTip.getBoundingClientRect(),top=Math.max(visibleFrame.top+8,Math.min(rect.bottom+8,visibleFrame.bottom-tip.height-8));timelineTip.style.left=Math.max(8,Math.min(rect.left,window.innerWidth-300))+'px';timelineTip.style.top=top+'px';
+}
+root.addEventListener('pointerover',e=>{const el=e.target.closest('[data-timeline-info]');if(el&&!moveGesture&&e.pointerType!=='touch')showTimelineTip(el);});
+root.addEventListener('pointerout',e=>{if(e.target.closest('[data-timeline-info]'))hideTimelineTip();});
+root.addEventListener('focusin',e=>{if(e.target.matches('[data-timeline-info]'))showTimelineTip(e.target);});
+root.addEventListener('focusout',hideTimelineTip);
+root.addEventListener('click',e=>{
+ if(skipTimelineClick){e.preventDefault();e.stopImmediatePropagation();skipTimelineClick=false;return;}
+ const b=e.target.closest('button');if(!b)return;
+ if(b.dataset.zoomMonths){state.timelineFrom=null;state.timelineDays=null;}
+ if(b.dataset.timeStep&&state.timelineFrom!=null){e.stopImmediatePropagation();shiftTimeline(Number(b.dataset.timeStep)*rangeSpec().days);}
+ if(b.dataset.scaleStep){e.stopImmediatePropagation();zoomTimeline(Number(b.dataset.scaleStep)>0?1.5:1/1.5);}
+ if(b.dataset.moveBatch){e.stopImmediatePropagation();openScheduleDialog('batch',b.dataset.moveBatch,0);}
+},true);
+root.addEventListener('wheel',e=>{
+ const wrap=e.target.closest('.gantt-wrap');if(!wrap)return;
+ if(e.ctrlKey||e.metaKey){e.preventDefault();hideTimelineTip();zoomTimeline(Math.exp(Math.max(-.3,Math.min(.3,e.deltaY*.01))),timelineAnchor(e,wrap));return;}
+ const amount=e.deltaX||(e.shiftKey?e.deltaY:0);if(!amount)return;e.preventDefault();hideTimelineTip();wheelRemainder+=amount;const px=wrap.querySelector('.g-track').getBoundingClientRect().width/rangeSpec().days,days=Math.trunc(wheelRemainder/Math.max(1,px));if(days){wheelRemainder-=days*Math.max(1,px);shiftTimeline(days);}
+},{passive:false});
+// Safari trackpad pinch emits gesture events instead of Control+wheel.
+let safariScale=1;
+root.addEventListener('gesturestart',e=>{if(e.target.closest('.gantt-wrap')){e.preventDefault();safariScale=1;}},{passive:false});
+root.addEventListener('gesturechange',e=>{const w=e.target.closest('.gantt-wrap');if(w){e.preventDefault();zoomTimeline(safariScale/e.scale,timelineAnchor(e,w));safariScale=e.scale;}},{passive:false});
+const timelineTouches=new Map();
+root.addEventListener('pointerdown',e=>{
+ const wrap=e.target.closest('.gantt-wrap');if(!wrap)return;hideTimelineTip();
+ if(e.pointerType==='touch'){timelineTouches.set(e.pointerId,{x:e.clientX,y:e.clientY});if(timelineTouches.size===2){const p=[...timelineTouches.values()];pinchGesture={distance:Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y),range:{...rangeSpec()}};moveGesture=null;drag=null;e.stopImmediatePropagation();return;}}
+ const bar=e.target.closest('[data-timeline-drag]');if(!bar||e.button!==0)return;e.stopImmediatePropagation();drag=null;
+ const type=bar.dataset.timelineDrag,id=bar.dataset.dragId,ts=type==='batch'?jobs.filter(j=>j.type==='production'&&(j.batch||'Unassigned')===id).flatMap(j=>leaves(j.id)):[taskBy(id)],[a,b]=timelineBounds(ts);
+ moveGesture={type,id,start:a,end:b,x:e.clientX,bar,edge:e.target.dataset.resize,daysize:wrap.querySelector('.g-track').getBoundingClientRect().width/rangeSpec().days,delta:0,pointer:e.pointerId};bar.setPointerCapture?.(e.pointerId);
+},true);
+root.addEventListener('pointermove',e=>{
+ if(timelineTouches.has(e.pointerId))timelineTouches.set(e.pointerId,{x:e.clientX,y:e.clientY});
+ if(pinchGesture&&timelineTouches.size===2){e.preventDefault();e.stopImmediatePropagation();const p=[...timelineTouches.values()],distance=Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y);state.timelineFrom=pinchGesture.range.from;state.timelineDays=pinchGesture.range.days;zoomTimeline(pinchGesture.distance/Math.max(1,distance));return;}
+ if(!moveGesture)return;e.stopImmediatePropagation();const g=moveGesture;g.delta=Math.round((e.clientX-g.x)/g.daysize);if(g.edge==='start')g.delta=Math.min(g.delta,g.end-g.start);if(g.edge==='end')g.delta=Math.max(g.delta,g.start-g.end);
+ const r=rangeSpec(),a=g.start+(g.edge==='end'?0:g.delta),b=g.end+(g.edge==='start'?0:g.delta);g.bar.style.gridColumn=`${Math.max(r.from,a)-r.from+2}/${Math.min(r.to,b)-r.from+3}`;g.bar.classList.toggle('is-dragging',!!g.delta);g.bar.setAttribute('aria-label',`${date(a)} to ${date(b)}`);
+},true);
+root.addEventListener('pointerup',e=>{
+ timelineTouches.delete(e.pointerId);if(pinchGesture){if(timelineTouches.size<2)pinchGesture=null;skipTimelineClick=true;setTimeout(()=>skipTimelineClick=false,0);e.stopImmediatePropagation();return;}
+ if(!moveGesture)return;e.stopImmediatePropagation();const g=moveGesture;moveGesture=null;if(!g.delta){g.bar.classList.remove('is-dragging');return;}skipTimelineClick=true;setTimeout(()=>skipTimelineClick=false,0);render();openScheduleDialog(g.type,g.id,g.delta,g.edge);
+},true);
+root.addEventListener('pointercancel',()=>{moveGesture=null;pinchGesture=null;timelineTouches.clear();drag=null;render();},true);
+function scheduleChanges(type,id,delta,edge){const list=type==='batch'?jobs.filter(j=>j.type==='production'&&(j.batch||'Unassigned')===id).flatMap(j=>leaves(j.id)):[taskBy(id)];return list.map(t=>({id:t.id,before:[t.start,t.end],after:[t.start+(edge==='end'?0:delta),t.end+(edge==='start'?0:delta)]}));}
+function openScheduleDialog(type,id,delta=0,edge){
+ const changes=scheduleChanges(type,id,delta,edge),first=Math.min(...changes.map(c=>c.before[0]));lastFocus=document.activeElement;state.dialog={kind:'schedule',type,id,delta,edge,changes};
+ modal.innerHTML=`<div class="dialog" role="dialog" aria-modal="true" aria-labelledby="tb2-dialog-title"><h3 id="tb2-dialog-title">${type==='batch'?'Move batch '+esc(id):'Confirm date change'}</h3><p class="small muted">${type==='batch'?'All tasks and expected arrivals move together.':esc(taskBy(id).title)}</p>${type==='batch'?`<label class="space">Batch begins<input type="date" id="schedule-begin" value="${iso(first+delta)}" data-original="${first}"></label>`:''}<div id="schedule-preview">${schedulePreview(changes)}</div><p class="small muted space">${type==='batch'?'Recorded stock movements keep their actual dates. Customer delivery promises stay unchanged.':'Parent stage dates update automatically.'}</p><p id="tb2-dialog-error" role="alert"></p><div class="actions"><button data-action="close-dialog">Cancel</button><button class="primary" data-schedule-save>Confirm dates</button></div></div>`;modal.hidden=false;positionWorkDialog();modal.querySelector('input,button').focus({preventScroll:true});
+}
+function schedulePreview(changes){return `<div class="schedule-changes">${changes.map(c=>`<div><span>${esc(taskBy(c.id).title)}${taskBy(c.id).done?' · ✓ Completed':''}</span><small>${date(c.before[0])}–${date(c.before[1])} → <strong>${date(c.after[0])}–${date(c.after[1])}</strong></small></div>`).join('')}</div>`;}
+function saveSchedule(){const d=state.dialog;if(d?.kind!=='schedule')return;if(d.changes.some(c=>c.after.some(n=>!Number.isFinite(n))||c.after[1]<c.after[0])){error('Enter a valid date range.');return;}
+ for(const c of d.changes){const t=taskBy(c.id);t.start=c.after[0];t.end=c.after[1];(t.history||=[]).push({action:'Dates changed',at:today,note:iso(c.before[0])+' → '+iso(c.after[0])});entries.filter(e=>e.task===t.id&&e.kind!=='actual').forEach(e=>e.at=t.end);if(t.receipt)jobBy(t.job).promise=t.end;}
+ if(d.type==='batch')jobs.filter(j=>j.type==='production'&&(j.batch||'Unassigned')===d.id).forEach(j=>{j.start+=d.delta;const receipt=leaves(j.id).filter(t=>t.receipt);j.promise=receipt.length?Math.max(...receipt.map(t=>t.end)):j.promise+d.delta;});
+ closeDialog(false);render();save();announce('Dates updated. Stages and expected availability now follow the new schedule.');
+}
+root.addEventListener('change',e=>{if(e.target.id==='schedule-begin'){const d=state.dialog;d.delta=idx(e.target.value)-Number(e.target.dataset.original);if(Number.isFinite(d.delta)){d.changes=scheduleChanges(d.type,d.id,d.delta);modal.querySelector('#schedule-preview').innerHTML=schedulePreview(d.changes);}}});
+root.addEventListener('click',e=>{if(e.target.closest('[data-schedule-save]'))saveSchedule();});
+
+// 3PL orders allocate existing commitments; dispatch posts physical stock once.
+let fulfillmentSequence=0;
+const copyValue=v=>JSON.parse(JSON.stringify(v));
+const savedQuotePlan=getQuotePlan;
+getQuotePlan=function(){const plan=copyValue(savedQuotePlan()),overrides=jobBy(state.quoteId)?.materialQuantities||{};
+ for(const r of plan.requirements){if(overrides[r.itemId]===undefined)continue;const previous=r.qty;r.qty=overrides[r.itemId];for(const row of plan.rowPlans||[])for(const m of row.requirements)if(m.itemId===r.itemId)m.qty=previous?m.qty/previous*r.qty:r.qty;}
+ return plan;
+};
+function orderMaterials(id){return planForOrder(id).requirements.map(r=>({...r,qty:jobBy(id).materialQuantities?.[r.itemId]??r.qty}));}
+function dispatchedQuantity(job,item){return entries.filter(e=>e.job===job&&e.item===item&&e.kind==='actual'&&e.qty<0).reduce((n,e)=>n-e.qty,0);}
+function allocatedQuantity(job,item){return entries.filter(e=>e.job===job&&e.item===item&&e.kind==='reserved'&&e.fulfillment).reduce((n,e)=>n+e.qty,0);}
+function availableFor3PL(job,item,total){return Math.max(0,total-dispatchedQuantity(job,item)-allocatedQuantity(job,item));}
+function reconcileOrderCommitments(id){const j=jobBy(id);if(j.status!=='Confirmed')return;
+ for(const r of orderMaterials(id)){
+  const loose=entries.filter(e=>e.job===id&&e.item===r.itemId&&e.kind==='reserved'&&!e.fulfillment),needed=Math.max(0,r.qty-dispatchedQuantity(id,r.itemId)-allocatedQuantity(id,r.itemId));
+  if(!needed){for(const e of loose)entries.splice(entries.indexOf(e),1);continue;}
+  if(loose.length){loose[0].qty=needed;for(const e of loose.slice(1))entries.splice(entries.indexOf(e),1);}
+  else entries.push({id:'REQ-'+id+'-'+r.itemId+'-'+(++fulfillmentSequence),item:r.itemId,kind:'reserved',qty:needed,at:j.promise-2,job:id,label:'Order material requirement'});
+ }
+}
+function ensureFulfillmentTasks(){
+ for(const j of jobs.filter(j=>j.type==='order'&&j.status==='Confirmed')){
+  if(tasks.some(t=>t.job===j.id&&t.kind==='3pl-order'))continue;
+  const parent=tasks.find(t=>t.job===j.id&&t.group)?.id||null;
+  tasks.push({id:j.id+'-3PL',job:j.id,parent,kind:'3pl-order',title:'Order from 3PL',start:j.promise-7,end:j.promise-7,owner:'Warehouse',people:['P2'],done:false});
+ }
+}
+function add3PLTask(id){const j=jobBy(id);if(!j||j.status!=='Confirmed')return;const t={id:id+'-3PL-'+(++fulfillmentSequence),job:id,parent:tasks.find(t=>t.job===id&&t.group)?.id||null,kind:'3pl-order',title:'Order from 3PL',start:today,end:today,owner:'Warehouse',people:['P2'],done:false};tasks.push(t);render();openDialog('edit',t.id);}
+function completionInfo(t){return t.done?`<div class="completion-banner">✓ Completed${t.completedAt!==undefined?' '+date(t.completedAt):''}${t.completedBy?' by '+esc(t.completedBy):''}<span>Details remain editable</span></div>`:'';}
+function taskHistory(t){return t.history?.length?`<details class="space"><summary>History (${t.history.length})</summary><div class="task-history">${[...t.history].reverse().map(h=>`<div><strong>${esc(h.action)}</strong> · ${date(h.at)}<small>${esc(h.note||'')}</small></div>`).join('')}</div></details>`:'';}
+const previousOpenDialog=openDialog,previousSaveDialog=saveDialog;
+openDialog=function(kind,id,extra={}){
+ const t=taskBy(id);
+ if(t?.kind==='3pl-order'&&(kind==='edit'||kind==='complete')){open3PL(t);return;}
+ if(t?.kind==='3pl-dispatch'&&(kind==='edit'||kind==='complete')){openDispatch(t);return;}
+ previousOpenDialog(kind,id,extra);
+ if(kind==='edit'&&t&&!t.group){
+  modal.querySelector('.fields').insertAdjacentHTML('beforebegin',completionInfo(t)+`<label class="space">Task<input id="task-edit-title" value="${esc(t.title)}"></label>`);
+  const select=modal.querySelector('#tb2-edit-status');select.disabled=false;select.innerHTML=['Not started','In progress','Blocked','Complete'].map(s=>`<option value="${s}" ${s===(t.done?'Complete':t.status||'Not started')?'selected':''}>${s}</option>`).join('');
+  modal.querySelector('.actions').insertAdjacentHTML('beforebegin',taskHistory(t));
+ }
+ if(kind==='complete'){const note=[...modal.querySelectorAll('p')].find(p=>p.textContent.includes('Demo user'));if(note)note.textContent='Completion and comments are recorded in task history.';}
+ positionWorkDialog();
+};
+saveDialog=function(){
+ const d=state.dialog,t=taskBy(d?.id);if(!d)return;
+ if(d.kind==='edit'&&t&&!t.group){
+  const selected=val('tb2-edit-status'),title=val('task-edit-title').trim(),before={start:t.start,end:t.end,done:t.done,title:t.title,comment:t.comment};
+  if(!title){error('Enter a task name.');return;}
+  if(t.receipt&&!t.done&&selected==='Complete'){error('Use the receipt confirmation to record quantities and complete this task.');return;}
+  if(t.receipt&&t.done&&selected!=='Complete'){error('Posted receipts stay completed. Correct their stock movements separately.');return;}
+  previousSaveDialog();if(state.dialog)return;t.title=title;t.done=selected==='Complete';
+  if(t.done&&!before.done){t.completedAt=today;t.completedBy=taskOwners(t)[0]?.name||'Oliver';}if(!t.done){t.completedAt=undefined;t.completedBy=null;}
+  (t.history||=[]).push({action:'Task edited',at:today,note:before.done!==t.done?(t.done?'Marked complete':'Reopened'):t.comment||'Details updated'});render();return;
+ }
+ previousSaveDialog();if(state.dialog)return;
+ if(d.kind==='complete'&&t){if(t.done){t.completedAt=today;t.completedBy=taskOwners(t)[0]?.name||'Oliver';}else t.completedAt=undefined;(t.history||=[]).push({action:t.done?'Completed':'Reopened',at:today,note:t.comment});render();}
+};
+function positionWorkDialog(){if(modal.hidden)return;const dialog=modal.querySelector('.dialog');if(!dialog)return;modal.style.paddingTop=Math.max(12,visibleFrame.top+12)+'px';dialog.style.maxHeight=Math.max(180,visibleFrame.bottom-visibleFrame.top-24)+'px';}
+window.addEventListener('message',e=>{if(e.source===window.parent&&e.data?.type==='tinybox:viewport')positionWorkDialog();});
+function fulfillmentDialog(title,sub,body,actions,kind,id){lastFocus=document.activeElement;state.dialog={kind,id};modal.innerHTML=`<div class="dialog fulfillment-dialog" role="dialog" aria-modal="true" aria-labelledby="tb2-dialog-title"><h3 id="tb2-dialog-title">${title}</h3><p class="small muted">${sub}</p>${body}<p id="tb2-dialog-error" role="alert"></p><div class="actions">${actions}</div></div>`;modal.hidden=false;positionWorkDialog();modal.querySelector('input,button,textarea')?.focus({preventScroll:true});}
+function open3PL(t){
+ const j=jobBy(t.job),record=t.fulfillmentOrder,requirements=orderMaterials(j.id),lines=record?.lines||requirements.map(r=>({itemId:r.itemId,total:r.qty,qty:availableFor3PL(j.id,r.itemId,r.qty)}));
+ const body=completionInfo(t)+`<div class="fields"><label>Order date<input id="fulfillment-date" type="date" value="${iso(t.end)}" ${record?'readonly':''}></label><label>Dispatch date<input id="fulfillment-dispatch" type="date" value="${iso((record?taskBy(record.dispatchTask)?.end:null)??t.draftDispatch??j.promise-2)}" ${record?'readonly':''}></label></div><div class="table-wrap space"><table class="fulfillment-table"><thead><tr><th><span class="sr-label">Include</span></th><th>Item</th><th class="num">Order total</th><th class="num">${record?'This order':'Still to order'}</th><th class="num">${record?'Committed':'This order'}</th></tr></thead><tbody>${lines.map(r=>{const i=items.find(i=>i.id===r.itemId),left=availableFor3PL(j.id,r.itemId,r.total),draft=t.draftLines?.find(x=>x.itemId===r.itemId),qty=draft?.qty??r.qty;return `<tr data-fulfillment-item="${r.itemId}"><td><input type="checkbox" data-fulfillment-include ${record||((draft?.included??true)&&left>0)?'checked':''} ${record?'disabled':''} aria-label="Include ${esc(i?.name||r.itemId)}"></td><td><strong>${esc(i?.name||r.itemId)}</strong><small>${esc(i?.unit||'units')}</small></td><td><input type="number" min="0" step="1" data-fulfillment-total value="${draft?.total??r.total}" ${record?'readonly':''} aria-label="Order total for ${esc(i?.name||r.itemId)}"></td><td class="num">${stockNumber(record?r.qty:left)}</td><td><input type="number" min="0" step="1" data-fulfillment-qty value="${qty}" ${record?'readonly':''} aria-label="This order quantity for ${esc(i?.name||r.itemId)}"></td></tr>`;}).join('')}</tbody></table></div><p class="small muted space">${record?'Quantities are committed to the linked dispatch task.':'Choose only the items in this 3PL order. Changing “Order total” updates the material quantities on the order page when confirmed.'}</p><label class="space">Notes<textarea id="fulfillment-notes">${esc(t.comment||'')}</textarea></label>${record?`<button class="link space" data-open-dispatch="${record.dispatchTask}">Open dispatch task →</button>`:''}${taskHistory(t)}`;
+ fulfillmentDialog(record?'Order from 3PL · confirmed':'Order from 3PL',esc(j.id+' · '+projectName(j)),body,`<button data-action="close-dialog">Close</button><button data-add-3pl="${j.id}">+ Another 3PL order</button><button data-3pl-draft>${record?'Save notes':'Save draft'}</button>${record?'':'<button class="primary" data-3pl-review>Review order</button>'}`,'3pl',t.id);
+}
+function read3PL(){const t=taskBy(state.dialog?.id),at=idx(val('fulfillment-date')),dispatchAt=idx(val('fulfillment-dispatch'));
+ const lines=[...modal.querySelectorAll('[data-fulfillment-item]')].map(row=>({itemId:row.dataset.fulfillmentItem,total:Number(row.querySelector('[data-fulfillment-total]').value),qty:Number(row.querySelector('[data-fulfillment-qty]').value),included:row.querySelector('[data-fulfillment-include]').checked}));
+ return {t,at,dispatchAt,lines,notes:val('fulfillment-notes').trim()};
+}
+function validate3PL(data,confirm=false){
+ if(!Number.isFinite(data.at)||!Number.isFinite(data.dispatchAt)||data.dispatchAt<data.at)return 'Dispatch must be on or after the order date.';
+ if(data.lines.some(r=>![r.total,r.qty].every(n=>Number.isInteger(n)&&n>=0)))return 'Use non-negative whole quantities.';
+ for(const r of data.lines){const committed=dispatchedQuantity(data.t.job,r.itemId)+allocatedQuantity(data.t.job,r.itemId);if(r.total<committed)return 'Order total cannot be lower than quantities already ordered or dispatched.';if(r.included&&r.qty>r.total-committed)return 'This order quantity exceeds the remaining requirement.';}
+ if(confirm&&!data.lines.some(r=>r.included&&r.qty>0))return 'Choose at least one item and quantity.';return '';
+}
+function save3PLDraft(){const t=taskBy(state.dialog.id);if(t.fulfillmentOrder){t.comment=val('fulfillment-notes').trim();(t.history||=[]).push({action:'Notes edited',at:today,note:t.comment});closeDialog(false);render();return;}
+ const data=read3PL(),message=validate3PL(data);if(message){error(message);return;}t.draftLines=data.lines;t.draftDispatch=data.dispatchAt;t.start=t.end=data.at;t.comment=data.notes;closeDialog(false);render();announce('3PL draft saved. Inventory has not changed.');}
+function review3PL(){const data=read3PL(),message=validate3PL(data,true);if(message){error(message);return;}const rows=data.lines.filter(r=>r.included&&r.qty>0),t=data.t;
+ fulfillmentDialog('Confirm 3PL order?',esc(projectName(jobBy(t.job))),`<div class="notice space">By clicking Confirm, you will update inventory commitments for the selected quantities. On-hand stock will be deducted when the dispatch task is confirmed.</div><ul class="fulfillment-review">${rows.map(r=>`<li>${esc(items.find(i=>i.id===r.itemId)?.name||r.itemId)}<strong>${r.qty} ${esc(items.find(i=>i.id===r.itemId)?.unit||'units')}</strong></li>`).join('')}</ul><p class="small muted">Dispatch planned ${date(data.dispatchAt)}. Existing order commitments are reused, so quantities are not counted twice.</p>`,`<button data-3pl-back>Back</button><button class="primary" data-3pl-confirm>Confirm</button>`,'3pl-confirm',t.id);state.dialog.pending=data;
+}
+function confirm3PL(){const d=state.dialog;if(d?.kind!=='3pl-confirm')return;const data=d.pending,t=taskBy(d.id);if(t.fulfillmentOrder)return;const message=validate3PL(data,true);if(message){error(message);return;}
+ const j=jobBy(t.job);j.materialQuantities={...j.materialQuantities};data.lines.forEach(r=>j.materialQuantities[r.itemId]=r.total);reconcileOrderCommitments(j.id);
+ const selected=data.lines.filter(r=>r.included&&r.qty>0),dispatchId=t.id+'-DISPATCH';
+ for(const r of selected){let remaining=r.qty;const loose=entries.filter(e=>e.job===j.id&&e.item===r.itemId&&e.kind==='reserved'&&!e.fulfillment);for(const entry of loose){const n=Math.min(remaining,entry.qty);entry.qty-=n;remaining-=n;if(!entry.qty)entries.splice(entries.indexOf(entry),1);if(!remaining)break;}
+  entries.push({id:t.id+'-'+r.itemId,item:r.itemId,kind:'reserved',qty:r.qty,at:data.dispatchAt,job:j.id,task:dispatchId,fulfillment:t.id,label:'3PL order · awaiting dispatch'});
+ }
+ t.fulfillmentOrder={lines:copyValue(selected),dispatchAt:data.dispatchAt,dispatchTask:dispatchId};t.start=t.end=data.at;t.done=true;t.completedAt=today;t.completedBy=taskOwners(t)[0]?.name||'Oliver';t.comment=data.notes;delete t.draftLines;
+ (t.history||=[]).push({action:'3PL order confirmed',at:today,note:'Committed '+selected.length+' material types. On-hand stock unchanged.'});
+ tasks.push({id:dispatchId,job:j.id,parent:t.parent,kind:'3pl-dispatch',orderTask:t.id,title:'Dispatch / delivery from 3PL',start:data.dispatchAt,end:data.dispatchAt,owner:'Logistics',people:['P7'],done:false,comment:'Dispatch items committed by '+t.title});
+ closeDialog(false);render();save();announce('3PL order confirmed. Inventory commitments updated and dispatch task created.');
+}
+function openDispatch(t){const pending=entries.filter(e=>e.task===t.id&&e.kind==='reserved'),history=entries.filter(e=>e.task===t.id&&e.kind==='actual'),body=completionInfo(t)+`<div class="fields"><label>Actual dispatch date<input id="dispatch-date" type="date" max="${iso(today)}" value="${iso(today)}"></label><label>Planned dispatch<input id="dispatch-planned" type="date" value="${iso(t.end)}"></label></div><div class="table-wrap space"><table class="fulfillment-table"><thead><tr><th></th><th>Item</th><th class="num">Outstanding</th><th class="num">Dispatch now</th></tr></thead><tbody>${pending.map(e=>`<tr data-dispatch-entry="${e.id}"><td><input type="checkbox" data-dispatch-include checked aria-label="Dispatch ${esc(items.find(i=>i.id===e.item)?.name||e.item)}"></td><td>${esc(items.find(i=>i.id===e.item)?.name||e.item)}</td><td class="num">${e.qty}</td><td><input type="number" min="0" max="${e.qty}" step="1" data-dispatch-qty value="${e.qty}" aria-label="Quantity to dispatch ${esc(e.item)}"></td></tr>`).join('')||'<tr><td colspan="4">All committed items dispatched.</td></tr>'}</tbody></table></div>${history.length?`<details class="space" open><summary>Dispatch history</summary>${history.map(e=>`<div class="dispatch-history">${date(e.at)} · ${esc(items.find(i=>i.id===e.item)?.name||e.item)} · ${-e.qty} ${esc(e.comment||'')}</div>`).join('')}</details>`:''}<label class="space">Notes<textarea id="dispatch-notes">${esc(t.comment||'')}</textarea></label><p class="small muted space">Confirm only the items leaving the warehouse. Partial dispatch keeps the remaining quantities committed.</p>${taskHistory(t)}`;
+ fulfillmentDialog('Dispatch / delivery from 3PL',esc(projectName(jobBy(t.job))),body,`<button data-action="close-dialog">Close</button><button data-dispatch-save>Save details</button>${pending.length?'<button class="primary" data-dispatch-review>Review dispatch</button>':''}`,'3pl-dispatch',t.id);
+}
+function readDispatch(){return {t:taskBy(state.dialog.id),at:idx(val('dispatch-date')),planned:idx(val('dispatch-planned')),notes:val('dispatch-notes').trim(),lines:[...modal.querySelectorAll('[data-dispatch-entry]')].filter(r=>r.querySelector('[data-dispatch-include]').checked).map(r=>({id:r.dataset.dispatchEntry,qty:Number(r.querySelector('[data-dispatch-qty]').value)})).filter(r=>r.qty!==0)};}
+function validateDispatch(data){if(!Number.isFinite(data.at)||data.at>today)return 'Use an actual dispatch date no later than today.';if(!data.lines.length)return 'Select at least one item to dispatch.';const totals=new Map();for(const line of data.lines){const e=entries.find(e=>e.id===line.id&&e.kind==='reserved');if(!e||!Number.isInteger(line.qty)||line.qty<=0||line.qty>e.qty)return 'Check quantities against the outstanding balance.';totals.set(e.item,(totals.get(e.item)||0)+line.qty);}
+ for(const [item,qty] of totals){const onHand=entries.filter(e=>e.item===item&&e.kind==='actual'&&e.at<=data.at).reduce((n,e)=>n+e.qty,0);if(qty>onHand)return 'Not enough recorded '+(items.find(i=>i.id===item)?.name||item)+' on that date. Record its receipt first.';}return '';}
+function reviewDispatch(){const data=readDispatch(),message=validateDispatch(data);if(message){error(message);return;}
+ fulfillmentDialog('Confirm dispatch?',esc(projectName(jobBy(data.t.job))),`<div class="notice space">Confirming deducts these quantities from on-hand inventory and clears their matching commitments.</div><ul class="fulfillment-review">${data.lines.map(r=>{const e=entries.find(e=>e.id===r.id);return `<li>${esc(items.find(i=>i.id===e.item)?.name||e.item)}<strong>${r.qty}</strong></li>`;}).join('')}</ul>`,`<button data-dispatch-back>Back</button><button class="primary" data-dispatch-confirm>Confirm dispatch</button>`,'dispatch-confirm',data.t.id);state.dialog.pending=data;
+}
+function confirmDispatch(){const d=state.dialog;if(d?.kind!=='dispatch-confirm')return;const data=d.pending,message=validateDispatch(data);if(message){error(message);return;}
+ for(const line of data.lines){const e=entries.find(e=>e.id===line.id);entries.push({id:'3PL-OUT-'+(++fulfillmentSequence),item:e.item,kind:'actual',qty:-line.qty,at:data.at,job:e.job,task:e.task,fulfillment:e.fulfillment,label:'3PL dispatch',comment:data.notes});e.qty-=line.qty;if(!e.qty)entries.splice(entries.indexOf(e),1);state.stockHistory.add(e.item);}
+ const t=data.t;t.done=!entries.some(e=>e.task===t.id&&e.kind==='reserved');t.status=t.done?'Complete':'In progress';t.comment=data.notes;if(t.done){t.completedAt=today;t.completedBy=taskOwners(t)[0]?.name||'Oliver';}t.start=Math.min(t.start,data.at);if(t.done)t.end=data.at;(t.history||=[]).push({action:t.done?'Dispatch completed':'Partial dispatch',at:today,note:data.notes});closeDialog(false);render();save();announce('Dispatch recorded. On-hand stock and remaining commitments updated.');
+}
+function orderMaterialsPanel(j){const reqs=orderMaterials(j.id);return `<details class="order-materials space"><summary>Materials & 3PL <span class="muted">${reqs.length} items</span></summary><div class="table-wrap"><table><thead><tr><th>Material</th><th class="num">Order quantity</th><th class="num">At 3PL</th><th class="num">Dispatched</th></tr></thead><tbody>${reqs.map(r=>`<tr><td>${esc(items.find(i=>i.id===r.itemId)?.name||r.itemId)}</td><td class="num">${r.qty} ${esc(items.find(i=>i.id===r.itemId)?.unit||'units')}</td><td class="num">${allocatedQuantity(j.id,r.itemId)}</td><td class="num">${dispatchedQuantity(j.id,r.itemId)}</td></tr>`).join('')}</tbody></table></div>${j.status==='Confirmed'?`<div class="row space"><button class="link" data-edit-task="${tasks.find(t=>t.job===j.id&&t.kind==='3pl-order')?.id}">Open 3PL order task →</button><button data-add-3pl="${j.id}">+ Another 3PL order</button></div>`:''}<p class="small muted space">Quantities edited in a confirmed 3PL task appear here.</p></details>`;}
+const oldQuoteForm=quoteForm;
+quoteForm=function(){const j=jobBy(state.quoteId);return oldQuoteForm().replace(`${j.id} · Studio configuration`,esc(projectName(j))+` ${customFlag(j)}`).replace('<div class="split qs-split">',`<div class="custom-control"><label class="check"><input data-custom-flag="${j.id}" type="checkbox" ${j.customAdditions?'checked':''}>Custom additions</label>${j.customAdditions?`<input data-custom-notes="${j.id}" aria-label="Custom additions notes" placeholder="Describe custom additions" value="${esc(j.customNotes||'')}">`:''}</div><div class="split qs-split">`).replace('<div class="quote-combination-note">',orderMaterialsPanel(j)+'<div class="quote-combination-note">').replaceAll('Free by need date','Available by date');};
+const oldProjectPage=projectPage;
+projectPage=function(){const j=jobBy(state.project);let html=oldProjectPage();if(j.type==='order')html=html.replace(`<h2>${esc(j.name)}</h2>`,`<h2>${esc(projectName(j))} ${customFlag(j)}</h2>`).replace('<div class="viewbar space">',`<div class="project-fulfillment space"><button data-add-3pl="${j.id}">+ 3PL order task</button><label class="check"><input data-custom-flag="${j.id}" type="checkbox" ${j.customAdditions?'checked':''}>Custom additions</label></div><div class="viewbar space">`);return html;};
+const oldTaskTable=taskTable;
+taskTable=function(list){let html=oldTaskTable(list);for(const j of jobs.filter(j=>j.type==='order'))html=html.replaceAll(esc(j.name),esc(projectName(j)));for(const j of jobs.filter(j=>j.customAdditions))html=html.replaceAll(`<span>${esc(projectName(j))}</span></button>`,`<span>${esc(projectName(j))}</span>${customFlag(j)}</button>`);return html;};
+const oldOrderPage=orderPage;
+orderPage=function(){let html=oldOrderPage();if(!state.quoteOpen)for(const j of jobs.filter(j=>j.type==='order'))html=html.replaceAll(`${j.id} · ${esc(j.name)}</button>`,`${j.id} · ${esc(projectName(j))} ${customFlag(j)}</button>`);return html;};
+const oldInventoryPage=inventoryPage;
+inventoryPage=function(){return oldInventoryPage().replaceAll('Free by date','Available by date');};
+const oldRender=render;
+render=function(){ensureFulfillmentTasks();for(const j of jobs.filter(j=>j.type==='order'))j.name=projectName(j);hideTimelineTip();oldRender();};
+const previousStockMovement=openStockMovement;
+openStockMovement=function(id){const e=entries.find(x=>x.id===id);if(e?.fulfillment&&taskBy(e.task)?.kind==='3pl-dispatch'){openDispatch(taskBy(e.task));return;}previousStockMovement(id);};
+// Keep special task records when the option recipes regenerate ordinary tasks.
+root.addEventListener('change',e=>{const id=e.target.dataset.customFlag||e.target.dataset.customNotes;if(!id)return;const j=jobBy(id);if(e.target.dataset.customFlag)j.customAdditions=e.target.checked;else j.customNotes=e.target.value.trim();render();save();});
+root.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;const d=b.dataset;
+ if(d.add3pl){e.stopImmediatePropagation();add3PLTask(d.add3pl);}
+ if(d.openDispatch){e.stopImmediatePropagation();openDispatch(taskBy(d.openDispatch));}
+ if('3plDraft' in d)save3PLDraft();if('3plReview' in d)review3PL();if('3plConfirm' in d)confirm3PL();
+ if('3plBack' in d){const data=state.dialog.pending;data.t.draftLines=data.lines;data.t.draftDispatch=data.dispatchAt;data.t.comment=data.notes;open3PL(data.t);}
+ if('dispatchReview' in d)reviewDispatch();if('dispatchConfirm' in d)confirmDispatch();if('dispatchBack' in d)openDispatch(taskBy(state.dialog.id));
+ if('dispatchSave' in d){const t=taskBy(state.dialog.id),planned=idx(val('dispatch-planned'));if(!Number.isFinite(planned)){error('Enter a planned dispatch date.');return;}if(!t.done){t.start=t.end=planned;entries.filter(e=>e.task===t.id&&e.kind==='reserved').forEach(e=>e.at=planned);}t.comment=val('dispatch-notes');(t.history||=[]).push({action:'Details edited',at:today,note:t.comment});closeDialog(false);render();}
+});
+
 root.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;if(suppressClick){suppressClick=false;return;}const ds=b.dataset;if(ds.range){state.ganttStart+=Number(ds.range);render();}if(ds.review){state.review=ds.review;render();save();}if(ds.nav)navigate(ds.nav);if(ds.view){state.view=ds.view;render();save();}if(ds.project)openProject(ds.project);if(ds.projectView){state.projectView=ds.projectView;render();}if(ds.productionView){state.productionView=ds.productionView;render();}if(ds.complete)openDialog('complete',ds.complete);if(ds.editTask)openDialog('edit',ds.editTask);if(ds.collapse){const at=state.collapsed.indexOf(ds.collapse),level=depth(taskBy(ds.collapse));if(level>=state.level){state.level=Math.min(3,level+1);if(at>=0)state.collapsed.splice(at,1);}else{at<0?state.collapsed.push(ds.collapse):state.collapsed.splice(at,1);}render();}if(ds.openOrder)openOrder(ds.openOrder);if(ds.table){state.table=ds.table;renderSchema();}const a=ds.action;if(a==='toggle-future'){state.future=!state.future;render();}if(a==='orders-back'){state.quoteOpen=false;render();}if(a==='new-quote')openOrder('Q-104');if(a==='confirm-quote')openDialog('quote-confirm');if(a==='close-dialog')closeDialog();if(a==='save-dialog')saveDialog();if(a==='edit-preset')openDialog('preset');if(a==='goto-preset'){state.presetVariant=quote.model+'|'+quote.frame;navigate('presets');}if(a==='new-batch')openDialog('batch');if(a==='daily-update')openDialog('daily');if(a==='availability'){state.stockDate=quote.date-2;navigate('inventory');}if(a==='revision')announce('Design behaviour: copy the approved configuration into a draft revision, then preview price, stock and task changes.');});
 root.addEventListener('change',e=>{const el=e.target,id=el.id;if(id==='tb2-level'){state.level=Number(el.value);state.collapsed=[];render();save();}if(id==='tb2-show-completed'){state.completed=el.checked;render();}if(id==='tb2-project-select'){state.project=el.value;render();save();}if(id==='tb2-stock-date'&&el.value){state.stockDate=idx(el.value);render();}if(id==='tb2-preset-variant'){state.presetVariant=el.value;render();}if(id.startsWith('tb2-q-')){const key=id.slice(6);if(key==='model'||key==='frame'||key==='build'||key==='electrical'||key==='hvac')quote[key]=el.value;else if(key==='date'&&el.value)quote.date=idx(el.value);else if(key==='name')quote.customer=el.value;else if(key==='site')quote.site=el.value;else if(key==='siding')quote.siding=el.value.toLowerCase();else if(key==='coverage')quote.coverage=el.value.split(' ')[0];else if(key==='override')quote.override=el.checked;else if(key==='override-qty')quote.overrideQty=Math.max(1,Number(el.value)||1);render();}if((id==='tb2-edit-start'||id==='tb2-edit-end')&&state.dialog?.kind==='edit'){const t=taskBy(state.dialog.id),dep=t.depends?taskBy(t.depends):null,start=idx(val('tb2-edit-start')),end=idx(val('tb2-edit-end'));let warning=dep&&dates(dep)[1]>=start?'Dependency warning: predecessor ends '+date(dates(dep)[1])+'. ':'';if(t.receipt){const affected=entries.filter(x=>x.item==='cedar'&&x.kind==='reserved'&&x.at<end).map(x=>x.job);if(affected.length)warning+='Material need dates affected: '+[...new Set(affected)].join(', ')+'.';}modal.querySelector('#tb2-edit-impact').textContent=warning;}});
 root.addEventListener('keydown',e=>{if(modal.hidden)return;if(e.key==='Escape'){e.preventDefault();closeDialog();}if(e.key==='Tab'){const els=[...modal.querySelectorAll('button,input,select,textarea')].filter(x=>!x.disabled);if(!els.length)return;const first=els[0],last=els[els.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}}});
-root.addEventListener('pointerdown',e=>{const bar=e.target.closest('[data-drag-task]');if(!bar||e.button!==0)return;const t=taskBy(bar.dataset.dragTask),grid=bar.closest('.gantt'),track=grid.querySelector('.g-track');drag={id:t.id,x:e.clientX,bar,daysize:track.getBoundingClientRect().width/28,start:t.start,end:t.end,resize:!!e.target.closest('.g-handle'),delta:0};bar.setPointerCapture?.(e.pointerId);});
-root.addEventListener('pointermove',e=>{if(!drag)return;drag.delta=Math.round((e.clientX-drag.x)/drag.daysize);if(Math.abs(e.clientX-drag.x)>5)drag.bar.style.opacity='.65';});
-root.addEventListener('pointerup',e=>{if(!drag)return;const d=drag;drag=null;d.bar.style.opacity='';if(d.delta!==0){suppressClick=true;openDialog('edit',d.id,{start:d.resize?d.start:d.start+d.delta,end:Math.max(d.resize?d.start:d.start+d.delta,d.end+d.delta)});}});
-root.addEventListener('pointercancel',()=>{if(drag)drag.bar.style.opacity='';drag=null;});
 restore(window.openai?.widgetState);render();window.addEventListener('openai:set_globals',e=>{if(e.detail?.globals?.widgetState){restore(e.detail.globals.widgetState);render();}});
 if(globalThis.Tweak){const t=new Tweak({container:root.querySelector('#tb2-app'),onChange:()=>{appearance();save();}});t.addSelect(design,'density',{label:'Table spacing',options:['Comfortable','Compact']});}
 })();
